@@ -1,0 +1,828 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>WBC Detector</title>
+<style>
+  :root {
+    --bg:#f5f6f8; --panel:#ffffff; --line:#e3e6eb; --fg:#1a1d23; --muted:#6b7280;
+    --accent:#2563eb; --accent-fg:#ffffff; --accent-light:#eaf1ff;
+    --ok:#16a34a; --danger:#dc2626; --warn:#f59e0b;
+  }
+  * { box-sizing:border-box; }
+  html, body { margin:0; height:100%; background:var(--bg); color:var(--fg);
+               font-family:system-ui,-apple-system,"Segoe UI",sans-serif; overflow:hidden;
+               font-size:16px; }
+
+  /* ---------------- brand header (always visible, top-left logo) ---------------- */
+  #brandBar { height:56px; flex-shrink:0; background:var(--panel); border-bottom:1px solid var(--line);
+              display:flex; align-items:center; gap:12px; padding:0 20px; }
+  #brandBar img { height:36px; width:36px; object-fit:contain; }
+  #brandBar .title { font-size:18px; font-weight:700; }
+  #brandBar .sub { font-size:12px; color:var(--muted); font-weight:500; }
+  #page { height:100vh; display:flex; flex-direction:column; }
+
+  /* ---------------- upload screen ---------------- */
+  #uploadScreen { flex:1; display:flex; align-items:center; justify-content:center; flex-direction:column; gap:20px; background:var(--bg); }
+  #uploadScreen h1 { font-size:32px; margin:0; font-weight:700; }
+  #uploadScreen p { color:var(--muted); font-size:17px; margin:0; max-width:480px; text-align:center; line-height:1.5; }
+  #dropZone { width:480px; max-width:90vw; padding:56px 24px; border:3px dashed #c7cdd6; border-radius:16px;
+              text-align:center; cursor:pointer; background:var(--panel);
+              box-shadow:0 1px 3px rgba(0,0,0,.05); transition:.15s; }
+  #dropZone:hover { border-color:var(--accent); background:var(--accent-light); }
+  #dropZone.drag { border-color:var(--accent); background:var(--accent-light); }
+  #dropZone .big { font-size:20px; font-weight:600; }
+  #dropZone .small { font-size:14px; color:var(--muted); margin-top:8px; }
+  #uploadStatus { font-size:15px; color:var(--muted); min-height:20px; }
+  #uploadProgress { display:none; width:480px; max-width:90vw; }
+  #uploadProgress.active { display:block; }
+  #uploadProgressTrack { height:10px; border-radius:6px; background:#e3e6eb; overflow:hidden; }
+  #uploadProgressFill { height:100%; width:0%; background:var(--accent); transition:width .15s ease; }
+
+  /* ---------------- main app ---------------- */
+  #layout { display:none; flex:1; flex-direction:column; min-height:0; }
+  #layout.active { display:flex; }
+
+  #toolbar { padding:12px 20px; background:var(--panel); border-bottom:1px solid var(--line);
+             display:flex; align-items:center; gap:10px; font-size:15px; flex-wrap:wrap; }
+  button { background:#fff; color:var(--fg); border:1.5px solid #d5d9e0; border-radius:8px;
+           padding:9px 16px; cursor:pointer; font-size:15px; font-weight:500; }
+  button:hover { background:#f0f2f5; border-color:#b8bfca; }
+  button.primary { background:var(--accent); border-color:var(--accent); color:var(--accent-fg); }
+  button.primary:hover { background:#1d4ed8; border-color:#1d4ed8; }
+  button.danger { color:var(--danger); border-color:#f3c9c9; }
+  button.danger:hover { background:#fdecec; }
+  button.toggle.active { background:var(--accent); border-color:var(--accent); color:var(--accent-fg); }
+  button:disabled { opacity:.4; cursor:default; }
+  button .icon { font-size:16px; margin-right:2px; }
+  select { background:#fff; color:var(--fg); border:1.5px solid #d5d9e0; border-radius:8px;
+           padding:9px 14px; font-size:15px; font-weight:500; max-width:240px; }
+  #status { color:var(--muted); font-size:14px; font-variant-numeric:tabular-nums; }
+  .spacer { flex:1; }
+
+  #body { flex:1; display:flex; min-height:0; }
+  #sidebar { width:260px; flex-shrink:0; background:var(--panel); border-right:1px solid var(--line);
+             display:flex; flex-direction:column; }
+  #sidebar h2 { font-size:13px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted);
+                margin:0; padding:14px 16px 8px; display:flex; justify-content:space-between; font-weight:700; }
+  #sidebar h2 a { color:var(--accent); text-decoration:none; cursor:pointer; text-transform:none; letter-spacing:0; font-weight:600; }
+  #files { overflow-y:auto; flex:1; }
+  .file-item { padding:10px 16px; cursor:pointer; font-size:14.5px; display:flex; justify-content:space-between;
+               gap:8px; border-left:4px solid transparent; }
+  .file-item:hover { background:#f4f6f9; }
+  .file-item.active { background:var(--accent-light); border-left-color:var(--accent); font-weight:600; }
+  .file-item .nm { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .dot { width:9px; height:9px; border-radius:50%; background:#d5d9e0; flex-shrink:0; align-self:center; }
+  .dot.done { background:var(--ok); }
+
+  #main { flex:1; display:flex; flex-direction:column; min-width:0; }
+
+  /* ---------------- adaptive progress bar (top of the image) ---------------- */
+  #progressBar { height:34px; flex-shrink:0; position:relative; overflow:hidden;
+                 background:#eef1f5; border-bottom:1px solid var(--line); }
+  #progressFill { position:absolute; top:0; bottom:0; left:0; width:0%; background:var(--accent);
+                  transition:width .25s ease; }
+  #progressFill.busy { background:linear-gradient(90deg, transparent, var(--accent) 40%, var(--accent) 60%, transparent);
+                        width:40% !important; animation:indet 1.1s infinite linear; transition:none; }
+  @keyframes indet { 0% { left:-40%; } 100% { left:100%; } }
+  #progressText { position:relative; z-index:1; height:100%; display:flex; align-items:center; justify-content:center;
+                  font-size:13px; font-weight:700; letter-spacing:.02em; color:var(--fg); }
+
+  #canvasWrap { flex:1; position:relative; overflow:hidden; background:#e9ebef; }
+  canvas { position:absolute; top:0; left:0; cursor:crosshair; }
+  canvas.pan-tool { cursor:grab; }
+  canvas.panning { cursor:grabbing; }
+  #help { position:absolute; bottom:14px; left:14px; font-size:13px; color:#e9ebef;
+          background:rgba(26,29,35,.82); padding:10px 14px; border-radius:8px; line-height:1.7; }
+  #flash { position:absolute; top:14px; right:14px; background:var(--ok); color:#fff; padding:10px 16px;
+           border-radius:8px; font-size:15px; font-weight:600; opacity:0; transition:opacity .3s; pointer-events:none;
+           box-shadow:0 2px 8px rgba(0,0,0,.15); }
+  #flash.err { background:var(--danger); }
+
+  #advPanel { display:none; position:absolute; top:14px; right:14px; background:var(--panel);
+              border:1px solid var(--line); border-radius:12px; padding:16px 18px; font-size:14px; width:250px;
+              box-shadow:0 4px 16px rgba(0,0,0,.1); }
+  #advPanel.open { display:block; }
+  #advPanel label { display:flex; justify-content:space-between; gap:8px; margin-bottom:12px; color:var(--fg); font-weight:500; }
+  #advPanel input[type=range] { width:130px; }
+
+  /* custom dropdown (plain DOM, not a native <select>) so clicks are 100%
+     reliable over the canvas - no OS-popup hit-testing quirks to fight */
+  #boxClassPicker { display:none; position:absolute; z-index:6; }
+  #boxClassPickerBtn { font-size:14px; font-weight:700; padding:7px 10px; border-radius:8px;
+                        border:2px solid var(--warn); background:#fff; color:var(--fg);
+                        box-shadow:0 4px 14px rgba(0,0,0,.2); cursor:pointer; white-space:nowrap; }
+  #boxClassPickerBtn:hover { border-color:var(--accent); }
+  #boxClassPickerList { display:none; position:absolute; top:100%; left:0; margin-top:4px;
+                         background:#fff; border:1px solid var(--line); border-radius:8px;
+                         box-shadow:0 8px 24px rgba(0,0,0,.18); max-height:260px; overflow-y:auto; min-width:190px; }
+  #boxClassPickerList.open { display:block; }
+  #boxClassPickerList .opt { padding:9px 14px; font-size:14px; font-weight:500; cursor:pointer; white-space:nowrap; }
+  #boxClassPickerList .opt:hover { background:var(--accent-light); }
+  #boxClassPickerList .opt.sel { background:var(--accent); color:#fff; font-weight:700; }
+</style>
+</head>
+<body>
+
+<div id="page">
+  <div id="brandBar">
+    <img src="/static/img/ku_logo.png" alt="Kasetsart University logo">
+    <div>
+      <div class="title">WBC Detector</div>
+      <div class="sub">Kasetsart University</div>
+    </div>
+  </div>
+
+  <div id="uploadScreen">
+    <h1>WBC Detector</h1>
+    <p>Attach a folder of blood-smear images. Each image is shown one at a time so you can auto-detect white blood cells, review the boxes, and fix the class label.</p>
+    <div id="dropZone">
+      <div class="big">Click to choose a folder, or drag one here</div>
+      <div class="small">.jpg &nbsp;.jpeg &nbsp;.png &nbsp;.bmp &nbsp;.tif &nbsp;.tiff</div>
+    </div>
+    <button id="filePickBtn" type="button">&#128196; Or select individual images</button>
+    <input type="file" id="fileInput" multiple accept="image/*,.tif,.tiff,.bmp" style="display:none">
+    <input type="file" id="folderInput" webkitdirectory directory multiple style="display:none">
+    <div id="uploadStatus"></div>
+    <div id="uploadProgress">
+      <div id="uploadProgressTrack"><div id="uploadProgressFill"></div></div>
+    </div>
+  </div>
+
+  <div id="layout">
+    <div id="toolbar">
+      <button id="newFolderBtn" title="Attach a different folder">&larr; New folder</button>
+      <button id="prevBtn">&larr;</button>
+      <button id="nextBtn">&rarr;</button>
+      <button id="fitBtn">Fit</button>
+      <button id="zoomInBtn">Zoom +</button>
+      <button id="zoomOutBtn">Zoom -</button>
+      <button id="panBtn" class="toggle" title="Pan tool: drag the image to slide it around">
+        <span class="icon">&#9995;</span>Pan
+      </button>
+      <button id="detectBtn">Auto Detect (D)</button>
+      <button id="detectAllBtn" title="Run auto-detect on every unlabeled image in the folder">Detect All</button>
+      <button id="advBtn">Settings</button>
+      <span id="status">—</span>
+      <div class="spacer"></div>
+      <select id="clsSelect" title="class of the selected box (and of new boxes)"></select>
+      <button id="deleteBtn" class="danger">Delete box</button>
+      <button id="saveBtn" class="primary">Save (Ctrl+S)</button>
+      <button id="saveNextBtn" class="primary">Save &amp; next (Enter)</button>
+    </div>
+    <div id="body">
+      <div id="sidebar">
+        <h2>Images <span id="imgCount"></span></h2>
+        <div id="files"></div>
+      </div>
+      <div id="main">
+        <div id="progressBar">
+          <div id="progressFill"></div>
+          <div id="progressText">—</div>
+        </div>
+        <div id="canvasWrap">
+          <canvas id="canvas"></canvas>
+          <div id="boxClassPicker">
+            <button id="boxClassPickerBtn" type="button" title="Wrong class? Click to pick the right one"></button>
+            <div id="boxClassPickerList"></div>
+          </div>
+          <div id="advPanel">
+            <label>Normalize stain <input type="checkbox" id="normStain" checked></label>
+            <label>Box threshold <input type="range" id="boxTh" min="0.05" max="0.9" step="0.01"><span id="boxThV"></span></label>
+            <label>Text threshold <input type="range" id="textTh" min="0.05" max="0.9" step="0.01"><span id="textThV"></span></label>
+            <label>Max box area <input type="range" id="maxArea" min="0.01" max="0.9" step="0.01"><span id="maxAreaV"></span></label>
+          </div>
+          <div id="help">
+            Pan tool (hand icon): drag to slide the image &middot; Box tool: drag empty area for new box, drag inside to move, drag corner to resize<br>
+            Right-drag always pans &middot; Wheel: zoom &middot; D: re-detect &middot; F: fit &middot; Enter: save &amp; next &middot; &larr;/&rarr;: prev/next image &middot; Tab: cycle boxes
+          </div>
+          <div id="flash"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const HANDLE = 9;
+
+let CLASSES = [], DEFAULTS = {};
+let SESSION_ID = null;
+let images = [], index = -1, img = null, boxes = [], selected = -1, dirty = false;
+let tool = 'box'; // 'box' | 'pan'
+let view = { scale: 1, ox: 0, oy: 0 };
+
+const canvas = $('canvas'), ctx = canvas.getContext('2d'), wrap = $('canvasWrap');
+
+function resize() { canvas.width = wrap.clientWidth; canvas.height = wrap.clientHeight; draw(); }
+window.addEventListener('resize', resize);
+
+function flash(text, isErr) {
+  const el = $('flash');
+  el.textContent = text;
+  el.className = isErr ? 'err' : '';
+  el.style.opacity = 1;
+  setTimeout(() => el.style.opacity = 0, 1200);
+}
+
+// -------------------------------------------------------------- progress bar --
+function updateProgress() {
+  const fill = $('progressFill'), text = $('progressText');
+  fill.classList.remove('busy');
+  if (index < 0 || !images.length) { fill.style.width = '0%'; text.textContent = '—'; return; }
+  const done = index + 1, total = images.length, left = total - done;
+  fill.style.width = (done / total * 100) + '%';
+  text.textContent = `Image ${done} of ${total}  ·  ${left} left`;
+}
+
+function setDetectingProgress(on) {
+  const fill = $('progressFill'), text = $('progressText');
+  if (on) {
+    fill.classList.add('busy');
+    text.textContent = `Detecting cells in image ${index + 1} of ${images.length}…`;
+  } else {
+    updateProgress();
+  }
+}
+
+// ------------------------------------------------------------- upload flow --
+const dropZone = $('dropZone'), fileInput = $('fileInput'), folderInput = $('folderInput');
+// primary: whole-folder picker - every image inside the chosen folder is
+// attached automatically, no manual multi-select needed
+dropZone.addEventListener('click', () => folderInput.click());
+folderInput.addEventListener('change', () => { if (folderInput.files.length) upload(folderInput.files); });
+
+// alternative: plain file dialog for cherry-picking specific images
+// (browsers default this to single-select unless the user selects several)
+$('filePickBtn').addEventListener('click', e => { e.stopPropagation(); fileInput.click(); });
+fileInput.addEventListener('change', () => { if (fileInput.files.length) upload(fileInput.files); });
+
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag'));
+dropZone.addEventListener('drop', async e => {
+  e.preventDefault();
+  dropZone.classList.remove('drag');
+  const files = await filesFromDataTransfer(e.dataTransfer);
+  if (files.length) upload(files);
+});
+
+async function filesFromDataTransfer(dt) {
+  // Supports a dropped folder (webkitGetAsEntry) as well as plain file drops.
+  const items = dt.items;
+  if (!items || !items[0] || !items[0].webkitGetAsEntry) return Array.from(dt.files);
+  const out = [];
+  async function walk(entry) {
+    if (entry.isFile) {
+      await new Promise(res => entry.file(f => { out.push(f); res(); }));
+    } else if (entry.isDirectory) {
+      const reader = entry.createReader();
+      const entries = await new Promise(res => reader.readEntries(res));
+      for (const e of entries) await walk(e);
+    }
+  }
+  for (const it of items) {
+    const entry = it.webkitGetAsEntry && it.webkitGetAsEntry();
+    if (entry) await walk(entry);
+  }
+  return out;
+}
+
+function fmtMB(bytes) { return (bytes / (1024 * 1024)).toFixed(0); }
+
+async function upload(fileList) {
+  const files = Array.from(fileList);
+  const totalBytes = files.reduce((s, f) => s + f.size, 0);
+  const totalMB = fmtMB(totalBytes);
+  $('uploadStatus').textContent = `Preparing to upload ${files.length} file(s), ${totalMB} MB...`;
+  $('uploadProgress').classList.add('active');
+  $('uploadProgressFill').style.width = '0%';
+
+  const form = new FormData();
+  for (const f of files) form.append('files', f, f.name);
+
+  try {
+    const d = await new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', '/api/upload');
+      xhr.upload.onprogress = e => {
+        if (!e.lengthComputable) return;
+        const pct = Math.round(e.loaded / e.total * 100);
+        $('uploadProgressFill').style.width = pct + '%';
+        $('uploadStatus').textContent =
+          `Uploading ${files.length} file(s)... ${fmtMB(e.loaded)} / ${totalMB} MB (${pct}%)`;
+      };
+      xhr.onload = () => {
+        try { resolve({ ok: xhr.status >= 200 && xhr.status < 300, body: JSON.parse(xhr.responseText) }); }
+        catch (err) { reject(err); }
+      };
+      xhr.onerror = () => reject(new Error('network error'));
+      xhr.send(form);
+    });
+    if (!d.ok) { $('uploadStatus').textContent = d.body.error || 'upload failed'; return; }
+    $('uploadProgressFill').style.width = '100%';
+    $('uploadStatus').textContent = 'Upload complete, opening viewer...';
+    SESSION_ID = d.body.session_id;
+    $('uploadScreen').style.display = 'none';
+    $('layout').classList.add('active');
+    resize();
+    await loadImages();
+  } catch (e) {
+    $('uploadStatus').textContent = 'upload failed: ' + e;
+  } finally {
+    $('uploadProgress').classList.remove('active');
+  }
+}
+
+async function loadImages() {
+  images = await (await fetch('/api/images?session_id=' + encodeURIComponent(SESSION_ID))).json();
+  $('imgCount').textContent = `(${images.length})`;
+  renderFiles();
+  if (images.length) select(0);
+}
+
+// --------------------------------------------------------------------- boot --
+async function boot() {
+  const cfg = await (await fetch('/api/config')).json();
+  CLASSES = cfg.classes;
+  DEFAULTS = cfg.defaults;
+  $('clsSelect').innerHTML = CLASSES.map((n, i) => `<option value="${i}">${n}</option>`).join('');
+  $('boxClassPickerList').innerHTML = CLASSES
+    .map((n, i) => `<div class="opt" data-cid="${i}">${n}</div>`).join('');
+  $('boxTh').min = 0.05; $('boxTh').max = 0.9; $('boxTh').value = DEFAULTS.box_threshold;
+  $('textTh').value = DEFAULTS.text_threshold;
+  $('maxArea').value = DEFAULTS.max_box_area_frac;
+  $('normStain').checked = !!DEFAULTS.normalize_stain;
+  updateAdvLabels();
+
+  // a link like /?session_id=xyz jumps straight into a session someone
+  // already uploaded (e.g. via the API), skipping the folder picker
+  const sid = new URLSearchParams(location.search).get('session_id');
+  if (sid) {
+    SESSION_ID = sid;
+    $('uploadScreen').style.display = 'none';
+    $('layout').classList.add('active');
+    resize();
+    await loadImages();
+  }
+}
+boot();
+
+function updateAdvLabels() {
+  $('boxThV').textContent = parseFloat($('boxTh').value).toFixed(2);
+  $('textThV').textContent = parseFloat($('textTh').value).toFixed(2);
+  $('maxAreaV').textContent = parseFloat($('maxArea').value).toFixed(2);
+}
+['boxTh', 'textTh', 'maxArea'].forEach(id => $(id).addEventListener('input', updateAdvLabels));
+
+function renderFiles() {
+  const el = $('files');
+  el.innerHTML = '';
+  images.forEach((f, i) => {
+    const d = document.createElement('div');
+    d.className = 'file-item' + (i === index ? ' active' : '');
+    d.innerHTML = `<span class="nm">${f.name}</span><span class="dot ${f.labeled ? 'done' : ''}"></span>`;
+    d.onclick = () => { if (askDiscard()) select(i); };
+    el.appendChild(d);
+  });
+  const active = el.querySelector('.active');
+  if (active) active.scrollIntoView({ block: 'nearest' });
+}
+
+function askDiscard() { return !dirty || confirm('Discard unsaved changes?'); }
+
+async function select(i) {
+  index = i; selected = -1; dirty = false;
+  renderFiles();
+  updateProgress();
+  const f = images[i];
+  const q = `session_id=${encodeURIComponent(SESSION_ID)}&name=${encodeURIComponent(f.name)}`;
+  const [el, lab] = await Promise.all([
+    loadImg(`/img/${encodeURIComponent(SESSION_ID)}/${encodeURIComponent(f.name)}`),
+    fetch('/api/label?' + q).then(r => r.json()),
+  ]);
+  img = el;
+  boxes = lab.boxes;
+  fit();
+  status();
+}
+
+function loadImg(src) {
+  return new Promise((res, rej) => {
+    const im = new Image();
+    im.onload = () => res(im); im.onerror = rej; im.src = src;
+  });
+}
+
+function detectParams(name) {
+  return {
+    session_id: SESSION_ID, name,
+    box_threshold: parseFloat($('boxTh').value),
+    text_threshold: parseFloat($('textTh').value),
+    max_box_area_frac: parseFloat($('maxArea').value),
+    nms_iou: DEFAULTS.nms_iou,
+    normalize_stain: $('normStain').checked,
+  };
+}
+
+async function detectRequest(name) {
+  const res = await fetch('/api/detect', {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(detectParams(name)),
+  });
+  const d = await res.json();
+  if (!res.ok) throw new Error(d.error || 'detect failed');
+  return d.boxes;
+}
+
+async function detect() {
+  if (index < 0) return;
+  $('detectBtn').disabled = true;
+  $('detectBtn').textContent = 'Detecting…';
+  setDetectingProgress(true);
+  try {
+    boxes = await detectRequest(images[index].name);
+    selected = boxes.length ? 0 : -1;
+    dirty = true;
+    if (!boxes.length) flash('no cell detected', true);
+    else flash(`detected ${boxes.length} cell${boxes.length === 1 ? '' : 's'}`);
+  } catch (e) {
+    flash(e.message, true);
+  } finally {
+    $('detectBtn').disabled = false;
+    $('detectBtn').textContent = 'Auto Detect (D)';
+    setDetectingProgress(false);
+    status(); draw();
+  }
+}
+
+async function detectAll() {
+  if (!images.length) return;
+  if (dirty && !confirm('Discard unsaved changes on the current image and run batch detection?')) return;
+  const targets = images.map((f, i) => i).filter(i => !images[i].labeled);
+  if (!targets.length) { flash('every image is already labeled'); return; }
+
+  ['detectBtn', 'detectAllBtn', 'prevBtn', 'nextBtn', 'newFolderBtn'].forEach(id => $(id).disabled = true);
+  $('detectAllBtn').textContent = 'Detecting…';
+  const fill = $('progressFill'), text = $('progressText');
+  fill.classList.remove('busy');
+
+  let ok = 0, failed = 0;
+  for (let k = 0; k < targets.length; k++) {
+    const i = targets[k];
+    fill.style.width = (k / targets.length * 100) + '%';
+    text.textContent = `Detect All: image ${k + 1} of ${targets.length}  (${images[i].name})`;
+    try {
+      const b = await detectRequest(images[i].name);
+      await fetch('/api/label', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ session_id: SESSION_ID, name: images[i].name, boxes: b }),
+      });
+      images[i].labeled = true;
+      ok++;
+    } catch (e) {
+      failed++;
+    }
+  }
+
+  fill.style.width = '100%';
+  text.textContent = `Detect All done: ${ok} labeled${failed ? `, ${failed} failed` : ''}`;
+  renderFiles();
+  if (index >= 0) {
+    await select(index);
+    // select() always clears the selection - pick the first box so the
+    // class dropdown immediately applies to something, same as a single Detect
+    selected = boxes.length ? 0 : -1;
+    status(); draw();
+  }
+  ['detectBtn', 'detectAllBtn', 'prevBtn', 'nextBtn', 'newFolderBtn'].forEach(id => $(id).disabled = false);
+  $('detectAllBtn').textContent = 'Detect All';
+  flash(`detect all: ${ok} image(s) labeled${failed ? `, ${failed} failed` : ''}`, failed > 0 && ok === 0);
+  setTimeout(updateProgress, 1500);
+}
+
+// ------------------------------------------------------------------- canvas --
+function fit() {
+  if (!img) return;
+  const m = 24;
+  view.scale = Math.min((canvas.width - m * 2) / img.width, (canvas.height - m * 2) / img.height);
+  view.ox = (canvas.width - img.width * view.scale) / 2;
+  view.oy = (canvas.height - img.height * view.scale) / 2;
+  draw();
+}
+
+function zoomBy(factor) {
+  if (!img) return;
+  const cx = canvas.width / 2, cy = canvas.height / 2;
+  const [ix, iy] = toI(cx, cy);
+  view.scale = Math.min(Math.max(view.scale * factor, .05), 30);
+  const [nx, ny] = toS(ix, iy);
+  view.ox += cx - nx; view.oy += cy - ny;
+  draw();
+}
+
+function status() {
+  const f = images[index];
+  $('status').textContent = f
+    ? `${index + 1}/${images.length}  ${f.name}  ·  ${boxes.length} box${boxes.length === 1 ? '' : 'es'}${dirty ? '  ·  unsaved' : ''}`
+    : '—';
+  if (selected >= 0) $('clsSelect').value = boxes[selected].class_id >= 0 ? boxes[selected].class_id : 0;
+}
+
+const toS = (x, y) => [x * view.scale + view.ox, y * view.scale + view.oy];
+const toI = (sx, sy) => [(sx - view.ox) / view.scale, (sy - view.oy) / view.scale];
+
+function rectOf(b) {
+  const w = b.w * img.width, h = b.h * img.height;
+  return { x: b.cx * img.width - w / 2, y: b.cy * img.height - h / 2, w, h };
+}
+
+function draw() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  if (!img) return;
+  const [sx, sy] = toS(0, 0);
+  ctx.drawImage(img, sx, sy, img.width * view.scale, img.height * view.scale);
+
+  boxes.forEach((b, i) => {
+    const r = rectOf(b);
+    const [x0, y0] = toS(r.x, r.y), [x1, y1] = toS(r.x + r.w, r.y + r.h);
+    const sel = i === selected;
+    ctx.lineWidth = sel ? 3 : 2;
+    ctx.strokeStyle = sel ? '#f59e0b' : '#dc2626';
+    ctx.strokeRect(x0, y0, x1 - x0, y1 - y0);
+
+    const clsName = CLASSES[b.class_id] ?? (b.class_name || 'Unknown');
+    const scoreTxt = b.cls_score ? ' ' + b.cls_score.toFixed(2) : '';
+    const label = `${clsName}${scoreTxt}`;
+    ctx.font = '600 13px system-ui, sans-serif';
+    const tw = ctx.measureText(label).width;
+    ctx.fillStyle = sel ? '#f59e0b' : '#dc2626';
+    ctx.fillRect(x0, y0 - 20, tw + 10, 20);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillText(label, x0 + 5, y0 - 6);
+
+    if (sel) {
+      ctx.fillStyle = '#f59e0b';
+      [[x0, y0], [x1, y0], [x0, y1], [x1, y1]].forEach(([cx, cy]) => ctx.fillRect(cx - 4, cy - 4, 8, 8));
+    }
+  });
+
+  if (draft) {
+    const [x0, y0] = toS(draft.x0, draft.y0), [x1, y1] = toS(draft.x1, draft.y1);
+    ctx.strokeStyle = '#2563eb'; ctx.lineWidth = 2; ctx.setLineDash([6, 4]);
+    ctx.strokeRect(x0, y0, x1 - x0, y1 - y0);
+    ctx.setLineDash([]);
+  }
+
+  positionBoxClassPicker();
+}
+
+// floating "wrong class? pick the right one" dropdown that follows the
+// selected box, so a bad auto-detection can be fixed right where it is.
+// Built from plain divs (not a native <select>) so a click always lands
+// exactly where expected, with no OS-popup hit-testing over the canvas.
+function positionBoxClassPicker() {
+  const picker = $('boxClassPicker'), btn = $('boxClassPickerBtn');
+  if (selected < 0 || !boxes[selected] || !img) {
+    picker.style.display = 'none';
+    closeBoxClassPickerList();
+    return;
+  }
+  const b = boxes[selected];
+  const cid = b.class_id >= 0 ? b.class_id : 0;
+  btn.textContent = CLASSES[cid] ?? 'Unknown';
+  const r = rectOf(b);
+  const [x0, y0] = toS(r.x, r.y);
+  picker.style.display = 'block';
+  const pickerH = 34;
+  const top = y0 - pickerH - 4 >= 0 ? y0 - pickerH - 4 : Math.min(canvas.height - pickerH, y0 + 6);
+  const left = Math.max(4, Math.min(canvas.width - picker.offsetWidth - 4, x0));
+  picker.style.top = top + 'px';
+  picker.style.left = left + 'px';
+  highlightBoxClassPickerList(cid);
+}
+
+function highlightBoxClassPickerList(cid) {
+  $('boxClassPickerList').querySelectorAll('.opt').forEach(el =>
+    el.classList.toggle('sel', parseInt(el.dataset.cid, 10) === cid));
+}
+
+function closeBoxClassPickerList() { $('boxClassPickerList').classList.remove('open'); }
+
+$('boxClassPicker').addEventListener('mousedown', e => e.stopPropagation());
+$('boxClassPicker').addEventListener('click', e => e.stopPropagation());
+
+$('boxClassPickerBtn').addEventListener('click', () => {
+  $('boxClassPickerList').classList.toggle('open');
+});
+
+$('boxClassPickerList').addEventListener('click', e => {
+  const opt = e.target.closest('.opt');
+  if (!opt || selected < 0) return;
+  const cid = parseInt(opt.dataset.cid, 10);
+  boxes[selected].class_id = cid;
+  boxes[selected].class_name = CLASSES[cid];
+  dirty = true;
+  closeBoxClassPickerList();
+  status(); draw();
+});
+
+// close the popup list when clicking anywhere else on the page
+document.addEventListener('mousedown', e => {
+  if (!$('boxClassPicker').contains(e.target)) closeBoxClassPickerList();
+});
+
+let mode = null, draft = null, dragStart = null, boxStart = null, corner = null;
+
+function hitCorner(b, sx, sy) {
+  const r = rectOf(b);
+  const pts = { nw: toS(r.x, r.y), ne: toS(r.x + r.w, r.y), sw: toS(r.x, r.y + r.h), se: toS(r.x + r.w, r.y + r.h) };
+  for (const [n, [px, py]] of Object.entries(pts))
+    if (Math.abs(px - sx) <= HANDLE && Math.abs(py - sy) <= HANDLE) return n;
+  return null;
+}
+
+function hitBox(sx, sy) {
+  const [ix, iy] = toI(sx, sy);
+  for (let i = boxes.length - 1; i >= 0; i--) {
+    const r = rectOf(boxes[i]);
+    if (ix >= r.x && ix <= r.x + r.w && iy >= r.y && iy <= r.y + r.h) return i;
+  }
+  return -1;
+}
+
+function setTool(t) {
+  tool = t;
+  $('panBtn').classList.toggle('active', tool === 'pan');
+  canvas.classList.toggle('pan-tool', tool === 'pan');
+}
+$('panBtn').onclick = () => setTool(tool === 'pan' ? 'box' : 'pan');
+
+canvas.addEventListener('contextmenu', e => e.preventDefault());
+
+canvas.addEventListener('mousedown', e => {
+  if (!img) return;
+  const r = canvas.getBoundingClientRect();
+  const sx = e.clientX - r.left, sy = e.clientY - r.top;
+
+  if (e.button === 2 || (e.button === 0 && tool === 'pan')) {
+    mode = 'pan'; dragStart = { sx, sy, ox: view.ox, oy: view.oy };
+    canvas.classList.add('panning');
+    return;
+  }
+  if (e.button !== 0) return;
+
+  if (selected >= 0) {
+    const c = hitCorner(boxes[selected], sx, sy);
+    if (c) { mode = 'resize'; corner = c; boxStart = rectOf(boxes[selected]); return; }
+  }
+  const hit = hitBox(sx, sy);
+  if (hit >= 0) {
+    selected = hit; mode = 'move'; dragStart = { sx, sy }; boxStart = rectOf(boxes[hit]);
+    status(); draw(); return;
+  }
+  selected = -1; mode = 'draw';
+  const [ix, iy] = toI(sx, sy);
+  draft = { x0: ix, y0: iy, x1: ix, y1: iy };
+  status(); draw();
+});
+
+window.addEventListener('mousemove', e => {
+  if (!mode || !img) return;
+  const r = canvas.getBoundingClientRect();
+  const sx = e.clientX - r.left, sy = e.clientY - r.top;
+
+  if (mode === 'pan') {
+    view.ox = dragStart.ox + (sx - dragStart.sx);
+    view.oy = dragStart.oy + (sy - dragStart.sy);
+  } else if (mode === 'draw') {
+    const [ix, iy] = toI(sx, sy); draft.x1 = ix; draft.y1 = iy;
+  } else if (mode === 'move') {
+    const dx = (sx - dragStart.sx) / view.scale, dy = (sy - dragStart.sy) / view.scale;
+    setBox(selected, boxStart.x + dx, boxStart.y + dy, boxStart.w, boxStart.h);
+    dirty = true;
+  } else if (mode === 'resize') {
+    const [ix, iy] = toI(sx, sy);
+    let x0 = boxStart.x, y0 = boxStart.y, x1 = boxStart.x + boxStart.w, y1 = boxStart.y + boxStart.h;
+    if (corner.includes('n')) y0 = iy;
+    if (corner.includes('s')) y1 = iy;
+    if (corner.includes('w')) x0 = ix;
+    if (corner.includes('e')) x1 = ix;
+    setBox(selected, Math.min(x0, x1), Math.min(y0, y1), Math.abs(x1 - x0), Math.abs(y1 - y0));
+    dirty = true;
+  }
+  draw();
+});
+
+window.addEventListener('mouseup', () => {
+  if (mode === 'draw' && draft) {
+    const x = Math.min(draft.x0, draft.x1), y = Math.min(draft.y0, draft.y1);
+    const w = Math.abs(draft.x1 - draft.x0), h = Math.abs(draft.y1 - draft.y0);
+    if (w > 3 && h > 3) {
+      boxes.push(mkBox(x, y, w, h, parseInt($('clsSelect').value, 10)));
+      selected = boxes.length - 1;
+      dirty = true;
+    }
+    draft = null;
+  }
+  mode = null; dragStart = null; boxStart = null; corner = null;
+  canvas.classList.remove('panning');
+  status(); draw();
+});
+
+function setBox(i, x, y, w, h) {
+  const old = boxes[i];
+  boxes[i] = mkBox(x, y, w, h, old.class_id, old.class_name, old.det_score, old.cls_score);
+}
+
+function mkBox(x, y, w, h, cid, className, detScore, clsScore) {
+  return {
+    class_id: cid, class_name: className || CLASSES[cid],
+    cx: (x + w / 2) / img.width, cy: (y + h / 2) / img.height,
+    w: w / img.width, h: h / img.height,
+    det_score: detScore, cls_score: clsScore,
+  };
+}
+
+wrap.addEventListener('wheel', e => {
+  if (!img) return;
+  e.preventDefault();
+  const r = canvas.getBoundingClientRect();
+  const sx = e.clientX - r.left, sy = e.clientY - r.top;
+  const [ix, iy] = toI(sx, sy);
+  view.scale = Math.min(Math.max(view.scale * Math.pow(1.0015, -e.deltaY), .05), 30);
+  const [nx, ny] = toS(ix, iy);
+  view.ox += sx - nx; view.oy += sy - ny;
+  draw();
+}, { passive: false });
+
+// ------------------------------------------------------------------ actions --
+function delSelected() {
+  if (selected < 0) return;
+  boxes.splice(selected, 1); selected = -1; dirty = true;
+  status(); draw();
+}
+
+async function save() {
+  if (index < 0) return false;
+  const res = await fetch('/api/label', {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ session_id: SESSION_ID, name: images[index].name, boxes }),
+  });
+  if (!res.ok) { flash('save failed', true); return false; }
+  dirty = false;
+  images[index].labeled = true;
+  renderFiles(); status();
+  flash(`saved ${boxes.length} box${boxes.length === 1 ? '' : 'es'}`);
+  return true;
+}
+
+function go(delta) {
+  const i = index + delta;
+  if (i < 0 || i >= images.length) return;
+  if (askDiscard()) select(i);
+}
+
+$('prevBtn').onclick = () => go(-1);
+$('nextBtn').onclick = () => go(1);
+$('fitBtn').onclick = fit;
+$('zoomInBtn').onclick = () => zoomBy(1.25);
+$('zoomOutBtn').onclick = () => zoomBy(0.8);
+$('detectBtn').onclick = detect;
+$('detectAllBtn').onclick = detectAll;
+$('deleteBtn').onclick = delSelected;
+$('saveBtn').onclick = save;
+$('saveNextBtn').onclick = async () => { if (await save()) go(1); };
+$('advBtn').onclick = () => $('advPanel').classList.toggle('open');
+$('newFolderBtn').onclick = () => {
+  if (dirty && !confirm('Discard unsaved changes and attach a new folder?')) return;
+  location.reload();
+};
+$('clsSelect').onchange = e => {
+  if (selected < 0) return;
+  boxes[selected].class_id = parseInt(e.target.value, 10);
+  boxes[selected].class_name = CLASSES[boxes[selected].class_id];
+  dirty = true; draw(); status();
+};
+
+window.addEventListener('keydown', e => {
+  if (e.target.tagName === 'SELECT' || e.target.tagName === 'INPUT') return;
+  if (e.key === 's' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); save(); }
+  else if (e.key === 'Enter') { e.preventDefault(); $('saveNextBtn').click(); }
+  else if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); delSelected(); }
+  else if (e.key === 'ArrowRight') { e.preventDefault(); go(1); }
+  else if (e.key === 'ArrowLeft') { e.preventDefault(); go(-1); }
+  else if (e.key === 'Tab' && boxes.length) {
+    e.preventDefault();
+    selected = (selected + (e.shiftKey ? -1 : 1) + boxes.length) % boxes.length;
+    status(); draw();
+  }
+  else if (e.key === 'd' || e.key === 'D') { e.preventDefault(); detect(); }
+  else if (e.key === 'f' || e.key === 'F') { e.preventDefault(); fit(); }
+  else if (e.key === '+' || e.key === '=') { e.preventDefault(); zoomBy(1.25); }
+  else if (e.key === '-' || e.key === '_') { e.preventDefault(); zoomBy(0.8); }
+  else if (e.key === 'v' || e.key === 'V') { e.preventDefault(); setTool(tool === 'pan' ? 'box' : 'pan'); }
+});
+</script>
+</body>
+</html>
