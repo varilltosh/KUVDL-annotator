@@ -5,6 +5,9 @@ services:
       - "5080:5080"
     volumes:
       - /home/skuba/skuba_ws/src/try_vision_project:/vision
+      # code mounted so `git pull` + restart picks up changes without a rebuild
+      - ./app.py:/app/app.py
+      - ./static:/app/static
       - ./uploads:/app/uploads
       - ./labels:/app/labels
     deploy:

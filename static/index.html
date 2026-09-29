@@ -378,45 +378,60 @@ async function filesFromDataTransfer(dt) {
 
 function fmtMB(bytes) { return (bytes / (1024 * 1024)).toFixed(0); }
 
+const IMG_EXT = /\.(jpe?g|png|bmp|tiff?)$/i;
+const BATCH = 100;  // the server rejects requests with >1000 files, so send folders in chunks
+
+function postBatch(files, sid, onProgress) {
+  return new Promise((resolve, reject) => {
+    const form = new FormData();
+    if (sid) form.append('session_id', sid);
+    for (const f of files) form.append('files', f, f.name);
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', '/api/upload');
+    xhr.upload.onprogress = e => { if (e.lengthComputable) onProgress(e.loaded); };
+    xhr.onload = () => {
+      let body = {};
+      try { body = JSON.parse(xhr.responseText); } catch (err) { /* non-JSON error page */ }
+      if (xhr.status >= 200 && xhr.status < 300) resolve(body);
+      else reject(new Error(body.error || `server returned ${xhr.status}`));
+    };
+    xhr.onerror = () => reject(new Error('network error'));
+    xhr.send(form);
+  });
+}
+
 async function upload(fileList) {
-  const files = Array.from(fileList);
+  // folders often contain non-image files (labels, thumbs.db...) - skip them
+  const files = Array.from(fileList).filter(f => IMG_EXT.test(f.name));
+  if (!files.length) { $('uploadStatus').textContent = 'no images found in the attached folder'; return; }
   const totalBytes = files.reduce((s, f) => s + f.size, 0);
   const totalMB = fmtMB(totalBytes);
-  $('uploadStatus').textContent = `Preparing to upload ${files.length} file(s), ${totalMB} MB...`;
   $('uploadProgress').classList.add('active');
   $('uploadProgressFill').style.width = '0%';
 
-  const form = new FormData();
-  for (const f of files) form.append('files', f, f.name);
-
   try {
-    const d = await new Promise((resolve, reject) => {
-      const xhr = new XMLHttpRequest();
-      xhr.open('POST', '/api/upload');
-      xhr.upload.onprogress = e => {
-        if (!e.lengthComputable) return;
-        const pct = Math.round(e.loaded / e.total * 100);
+    let sid = null, doneBytes = 0;
+    for (let i = 0; i < files.length; i += BATCH) {
+      const batch = files.slice(i, i + BATCH);
+      const batchBytes = batch.reduce((s, f) => s + f.size, 0);
+      const d = await postBatch(batch, sid, loaded => {
+        const sent = doneBytes + loaded, pct = Math.round(sent / totalBytes * 100);
         $('uploadProgressFill').style.width = pct + '%';
         $('uploadStatus').textContent =
-          `Uploading ${files.length} file(s)... ${fmtMB(e.loaded)} / ${totalMB} MB (${pct}%)`;
-      };
-      xhr.onload = () => {
-        try { resolve({ ok: xhr.status >= 200 && xhr.status < 300, body: JSON.parse(xhr.responseText) }); }
-        catch (err) { reject(err); }
-      };
-      xhr.onerror = () => reject(new Error('network error'));
-      xhr.send(form);
-    });
-    if (!d.ok) { $('uploadStatus').textContent = d.body.error || 'upload failed'; return; }
+          `Uploading ${files.length} image(s)... ${fmtMB(sent)} / ${totalMB} MB (${pct}%)`;
+      });
+      sid = d.session_id;
+      doneBytes += batchBytes;
+    }
     $('uploadProgressFill').style.width = '100%';
     $('uploadStatus').textContent = 'Upload complete, opening viewer...';
-    SESSION_ID = d.body.session_id;
+    SESSION_ID = sid;
     $('uploadScreen').style.display = 'none';
     $('layout').classList.add('active');
     resize();
     await loadImages();
   } catch (e) {
-    $('uploadStatus').textContent = 'upload failed: ' + e;
+    $('uploadStatus').textContent = 'upload failed: ' + e.message;
   } finally {
     $('uploadProgress').classList.remove('active');
   }
