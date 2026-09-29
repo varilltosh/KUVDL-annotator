@@ -71,6 +71,9 @@ STAIN_LAB_STD = _stain_ref["lab_std"].astype(np.float32) if _stain_ref is not No
 
 UPLOAD_ROOT = _here / "uploads"
 LABEL_ROOT = _here / "labels"
+# per-image review bookkeeping (model output snapshot + reviewed flag), kept
+# next to the labels so it rides on the same mounted volume
+META_ROOT = LABEL_ROOT / "_meta"
 UPLOAD_ROOT.mkdir(parents=True, exist_ok=True)
 LABEL_ROOT.mkdir(parents=True, exist_ok=True)
 
@@ -186,6 +189,150 @@ def write_label(sid, name, boxes):
             f"{float(b['w']):.6f} {float(b['h']):.6f}" for b in boxes]
     p.write_text("\n".join(rows) + ("\n" if rows else ""))
     return len(rows)
+
+
+# ---------------------------------------------------------- review metadata --
+# labels/_meta/<sid>/<stem>.json = {"pred": [model boxes] | null,
+#                                    "reviewed": bool, "saves": int}
+# `pred` is the last auto-detect output for the image; the saved label file is
+# the human-corrected result. Comparing the two gives the edit / accuracy stats.
+
+META_LOCK = threading.Lock()
+MATCH_IOU = 0.5     # pred and final box are "the same cell" above this IoU
+ADJUST_IOU = 0.9    # ...but count as a box edit (moved/resized) below this
+
+
+def meta_path(sid, name):
+    return META_ROOT / sid / (Path(name).stem + ".json")
+
+
+def read_meta(sid, name):
+    p = meta_path(sid, name)
+    try:
+        return json.loads(p.read_text())
+    except (OSError, ValueError):
+        return {"pred": None, "reviewed": False, "saves": 0}
+
+
+def update_meta(sid, name, **changes):
+    with META_LOCK:
+        meta = read_meta(sid, name)
+        meta.update(changes)
+        p = meta_path(sid, name)
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(json.dumps(meta))
+        return meta
+
+
+def _iou(a, b):
+    ax0, ay0, ax1, ay1 = a["cx"] - a["w"] / 2, a["cy"] - a["h"] / 2, a["cx"] + a["w"] / 2, a["cy"] + a["h"] / 2
+    bx0, by0, bx1, by1 = b["cx"] - b["w"] / 2, b["cy"] - b["h"] / 2, b["cx"] + b["w"] / 2, b["cy"] + b["h"] / 2
+    iw, ih = min(ax1, bx1) - max(ax0, bx0), min(ay1, by1) - max(ay0, by0)
+    if iw <= 0 or ih <= 0:
+        return 0.0
+    inter = iw * ih
+    return inter / (a["w"] * a["h"] + b["w"] * b["h"] - inter)
+
+
+def match_boxes(pred, final):
+    """Greedy one-to-one IoU matching -> (pairs[(pi, fi, iou)], unmatched_pred, unmatched_final)."""
+    cand = sorted(((_iou(p, f), pi, fi) for pi, p in enumerate(pred) for fi, f in enumerate(final)),
+                  reverse=True)
+    used_p, used_f, pairs = set(), set(), []
+    for iou, pi, fi in cand:
+        if iou < MATCH_IOU:
+            break
+        if pi in used_p or fi in used_f:
+            continue
+        used_p.add(pi); used_f.add(fi); pairs.append((pi, fi, iou))
+    return (pairs,
+            [i for i in range(len(pred)) if i not in used_p],
+            [i for i in range(len(final)) if i not in used_f])
+
+
+def compute_stats(sids):
+    """Aggregate annotation progress, edit counts and model accuracy over sessions."""
+    n = len(CLASSES)
+    out = {
+        "images_total": 0, "images_annotated": 0, "images_reviewed": 0,
+        "images_edited": 0, "boxes_final": 0,
+        "edits": {"class_changed": 0, "box_adjusted": 0, "deleted": 0, "added": 0, "total": 0},
+        "matched": 0, "model_boxes": 0, "class_correct": 0,
+    }
+    confusion = [[0] * n for _ in range(n)]   # [model class][final class], matched boxes
+    added_by_class = [0] * n                    # boxes the model missed entirely
+    deleted_by_class = [0] * n                  # model boxes the human removed
+    for sid in sids:
+        up = UPLOAD_ROOT / sid
+        if up.is_dir():
+            out["images_total"] += sum(1 for p in up.iterdir()
+                                       if p.is_file() and p.suffix.lower() in IMAGE_EXTENSIONS)
+        ldir = LABEL_ROOT / sid
+        if not ldir.is_dir():
+            continue
+        for lp in ldir.glob("*.txt"):
+            out["images_annotated"] += 1
+            final = read_label(sid, lp.name) or []
+            out["boxes_final"] += len(final)
+            meta = read_meta(sid, lp.name)
+            if not meta.get("reviewed"):
+                continue
+            out["images_reviewed"] += 1
+            pred = meta.get("pred")
+            if pred is None:
+                continue  # hand-labelled, nothing to compare against
+            pairs, lost_p, lost_f = match_boxes(pred, final)
+            img_edits = 0
+            for pi, fi, iou in pairs:
+                pc, fc = pred[pi]["class_id"], final[fi]["class_id"]
+                if 0 <= pc < n and 0 <= fc < n:
+                    confusion[pc][fc] += 1
+                if pc == fc:
+                    out["class_correct"] += 1
+                else:
+                    out["edits"]["class_changed"] += 1; img_edits += 1
+                if iou < ADJUST_IOU:
+                    out["edits"]["box_adjusted"] += 1; img_edits += 1
+            for pi in lost_p:
+                if 0 <= pred[pi]["class_id"] < n:
+                    deleted_by_class[pred[pi]["class_id"]] += 1
+            for fi in lost_f:
+                if 0 <= final[fi]["class_id"] < n:
+                    added_by_class[final[fi]["class_id"]] += 1
+            out["edits"]["deleted"] += len(lost_p)
+            out["edits"]["added"] += len(lost_f)
+            img_edits += len(lost_p) + len(lost_f)
+            out["matched"] += len(pairs)
+            out["model_boxes"] += len(pred)
+            out["images_edited"] += 1 if img_edits else 0
+    e = out["edits"]
+    e["total"] = e["class_changed"] + e["box_adjusted"] + e["deleted"] + e["added"]
+
+    per_class = []
+    for i, name in enumerate(CLASSES):
+        predicted = sum(confusion[i]) + deleted_by_class[i]   # model said class i
+        correct = confusion[i][i]
+        actual = sum(row[i] for row in confusion) + added_by_class[i]  # truly class i
+        per_class.append({
+            "class": name, "predicted": predicted, "correct": correct,
+            "wrong": predicted - correct, "actual": actual,
+            "precision": correct / predicted if predicted else None,
+            "recall": correct / actual if actual else None,
+        })
+    out["per_class"] = per_class
+    out["confusion"] = confusion
+    out["classes"] = CLASSES
+    out["class_accuracy"] = out["class_correct"] / out["matched"] if out["matched"] else None
+    out["detection_precision"] = out["matched"] / out["model_boxes"] if out["model_boxes"] else None
+    return out
+
+
+def stats_sessions(sid_arg):
+    if sid_arg:
+        return [sid_arg] if safe_session(sid_arg) else None
+    ids = {p.name for p in UPLOAD_ROOT.iterdir() if p.is_dir()}
+    ids |= {p.name for p in LABEL_ROOT.iterdir() if p.is_dir() and not p.name.startswith("_")}
+    return sorted(ids)
 
 
 # --------------------------------------------------------------- detection --
@@ -399,7 +546,38 @@ def api_put_label():
     if not sid or not safe_image(sid, name):
         return jsonify({"error": "not found"}), 404
     n = write_label(sid, name, body.get("boxes", []))
+    # Detect All writes raw model output (reviewed=false); an explicit Save by
+    # the annotator is a review, so only those feed the accuracy table.
+    meta = read_meta(sid, name)
+    update_meta(sid, name, reviewed=bool(body.get("reviewed", True)),
+                saves=meta.get("saves", 0) + 1)
     return jsonify({"ok": True, "num_boxes": n})
+
+
+@app.route("/api/stats")
+def api_stats():
+    sids = stats_sessions(request.args.get("session_id", ""))
+    if sids is None:
+        return jsonify({"error": "unknown session"}), 404
+    return jsonify(compute_stats(sids))
+
+
+@app.route("/api/stats.csv")
+def api_stats_csv():
+    sids = stats_sessions(request.args.get("session_id", ""))
+    if sids is None:
+        return jsonify({"error": "unknown session"}), 404
+    st = compute_stats(sids)
+    fmt = lambda v: "" if v is None else f"{v:.4f}"
+    lines = ["class,model_predicted,correct,wrong,actual,precision,recall"]
+    for c in st["per_class"]:
+        lines.append(f"{c['class']},{c['predicted']},{c['correct']},{c['wrong']},{c['actual']},"
+                     f"{fmt(c['precision'])},{fmt(c['recall'])}")
+    lines += ["", "confusion (rows=model, cols=final)," + ",".join(st["classes"])]
+    for name, row in zip(st["classes"], st["confusion"]):
+        lines.append(name + "," + ",".join(map(str, row)))
+    return app.response_class("\n".join(lines) + "\n", mimetype="text/csv",
+                              headers={"Content-Disposition": "attachment; filename=model_accuracy.csv"})
 
 
 @app.route("/api/detect", methods=["POST"])
@@ -421,6 +599,8 @@ def api_detect():
         )
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+    # snapshot the raw model output so later human edits can be measured against it
+    update_meta(sid, name, reviewed=False, pred=[{k: b[k] for k in ("class_id", "cx", "cy", "w", "h")} for b in boxes])
     return jsonify({"boxes": boxes})
 
 

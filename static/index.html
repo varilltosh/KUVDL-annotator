@@ -20,6 +20,24 @@
   #brandBar img { height:36px; width:36px; object-fit:contain; }
   #brandBar .title { font-size:18px; font-weight:700; }
   #brandBar .sub { font-size:12px; color:var(--muted); font-weight:500; }
+  #statChips { margin-left:auto; display:none; gap:8px; align-items:center; }
+  .chip { background:var(--bg); border:1px solid var(--line); border-radius:8px; padding:4px 12px; text-align:center; line-height:1.2; }
+  .chip b { display:block; font-size:17px; font-variant-numeric:tabular-nums; }
+  .chip span { font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; }
+  #statsModal { display:none; position:fixed; inset:0; z-index:50; background:rgba(0,0,0,.4);
+                align-items:center; justify-content:center; }
+  #statsModal.open { display:flex; }
+  #statsBox { background:var(--panel); border-radius:14px; padding:22px 26px; width:760px; max-width:94vw;
+              max-height:90vh; overflow:auto; box-shadow:0 12px 40px rgba(0,0,0,.25); }
+  #statsBox h3 { margin:0 0 4px; font-size:20px; }
+  #statsBox h4 { margin:20px 0 8px; font-size:14px; text-transform:uppercase; letter-spacing:.05em; color:var(--muted); }
+  #statsBox table { border-collapse:collapse; width:100%; font-size:14px; font-variant-numeric:tabular-nums; }
+  #statsBox th, #statsBox td { padding:6px 10px; border-bottom:1px solid var(--line); text-align:right; }
+  #statsBox th:first-child, #statsBox td:first-child { text-align:left; }
+  #statsBox th { color:var(--muted); font-weight:600; font-size:12px; }
+  #statsBox td.diag { background:var(--accent-light); font-weight:700; }
+  #statsBox .kpis { display:flex; gap:10px; flex-wrap:wrap; margin:12px 0; }
+  #statsBox .note { font-size:12.5px; color:var(--muted); margin:6px 0 0; }
   #page { height:100vh; display:flex; flex-direction:column; }
 
   /* ---------------- upload screen ---------------- */
@@ -131,6 +149,26 @@
       <div class="title">WBC Detector</div>
       <div class="sub">Kasetsart University</div>
     </div>
+    <div id="statChips">
+      <div class="chip"><b id="chAnnotated">–</b><span>Annotated</span></div>
+      <div class="chip"><b id="chEdits">–</b><span>Edits</span></div>
+      <div class="chip"><b id="chAcc">–</b><span>Model acc.</span></div>
+      <button id="statsBtn" type="button">Accuracy table</button>
+    </div>
+  </div>
+
+  <div id="statsModal">
+    <div id="statsBox">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+        <h3>Model accuracy &amp; annotation stats</h3>
+        <div>
+          <label style="font-size:14px"><input type="checkbox" id="statsAll"> all folders</label>
+          <a id="statsCsv" href="#"><button type="button">Download CSV</button></a>
+          <button id="statsClose" type="button">Close</button>
+        </div>
+      </div>
+      <div id="statsBody"></div>
+    </div>
   </div>
 
   <div id="uploadScreen">
@@ -225,6 +263,56 @@ function flash(text, isErr) {
   el.style.opacity = 1;
   setTimeout(() => el.style.opacity = 0, 1200);
 }
+
+// -------------------------------------------------------------------- stats --
+const pct = v => v == null ? '–' : (v * 100).toFixed(1) + '%';
+const statsUrl = (path, all) => path + (SESSION_ID && !all ? '?session_id=' + encodeURIComponent(SESSION_ID) : '');
+
+async function refreshChips() {
+  try {
+    const st = await (await fetch(statsUrl('/api/stats'))).json();
+    $('chAnnotated').textContent = SESSION_ID
+      ? `${st.images_annotated} / ${st.images_total}` : st.images_annotated;
+    $('chEdits').textContent = st.edits.total;
+    $('chAcc').textContent = pct(st.class_accuracy);
+  } catch (e) { /* chips are informational only */ }
+}
+
+async function openStats() {
+  const all = $('statsAll').checked;
+  $('statsAll').disabled = !SESSION_ID;
+  $('statsCsv').href = statsUrl('/api/stats.csv', all);
+  const st = await (await fetch(statsUrl('/api/stats', all))).json();
+  const e = st.edits;
+  const kpi = (v, l) => `<div class="chip"><b>${v}</b><span>${l}</span></div>`;
+  let h = `<div class="kpis">
+    ${kpi(st.images_annotated + (all || !SESSION_ID ? '' : ' / ' + st.images_total), 'images annotated')}
+    ${kpi(st.images_reviewed, 'reviewed by human')}
+    ${kpi(st.images_edited, 'images edited')}
+    ${kpi(e.total, 'edits made')}
+    ${kpi(pct(st.class_accuracy), 'class accuracy')}
+    ${kpi(pct(st.detection_precision), 'box precision')}
+  </div>
+  <h4>Edits made to model output</h4>
+  <table><tr><th></th><th>Class changed</th><th>Box moved/resized</th><th>Box deleted</th><th>Box added</th><th>Total</th></tr>
+  <tr><td>count</td><td>${e.class_changed}</td><td>${e.box_adjusted}</td><td>${e.deleted}</td><td>${e.added}</td><td><b>${e.total}</b></td></tr></table>
+  <h4>Accuracy per class</h4>
+  <table><tr><th>Class</th><th>Model said</th><th>Correct</th><th>Wrong</th><th>Actually was</th><th>Precision</th><th>Recall</th></tr>
+  ${st.per_class.map(c => `<tr><td>${c.class}</td><td>${c.predicted}</td><td>${c.correct}</td><td>${c.wrong}</td><td>${c.actual}</td><td>${pct(c.precision)}</td><td>${pct(c.recall)}</td></tr>`).join('')}
+  </table>
+  <h4>Confusion matrix (rows: model, columns: human-corrected)</h4>
+  <table><tr><th></th>${st.classes.map(c => `<th>${c}</th>`).join('')}</tr>
+  ${st.confusion.map((row, i) => `<tr><td>${st.classes[i]}</td>${row.map((v, j) => `<td class="${i === j ? 'diag' : ''}">${v}</td>`).join('')}</tr>`).join('')}
+  </table>
+  <p class="note">Only images the annotator saved after auto-detect are compared (Detect All output that has not been reviewed is not counted).
+  A box counts as matched at IoU &ge; 0.5; "Box moved/resized" is a matched box with IoU &lt; 0.9.</p>`;
+  $('statsBody').innerHTML = h;
+  $('statsModal').classList.add('open');
+}
+$('statsBtn').onclick = openStats;
+$('statsAll').onchange = openStats;
+$('statsClose').onclick = () => $('statsModal').classList.remove('open');
+$('statsModal').addEventListener('mousedown', e => { if (e.target === $('statsModal')) $('statsModal').classList.remove('open'); });
 
 // -------------------------------------------------------------- progress bar --
 function updateProgress() {
@@ -338,6 +426,8 @@ async function loadImages() {
   images = await (await fetch('/api/images?session_id=' + encodeURIComponent(SESSION_ID))).json();
   $('imgCount').textContent = `(${images.length})`;
   renderFiles();
+  $('statChips').style.display = 'flex';  // counters only exist once a folder is open
+  refreshChips();
   if (images.length) select(0);
 }
 
@@ -476,7 +566,7 @@ async function detectAll() {
       const b = await detectRequest(images[i].name);
       await fetch('/api/label', {
         method: 'POST', headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ session_id: SESSION_ID, name: images[i].name, boxes: b }),
+        body: JSON.stringify({ session_id: SESSION_ID, name: images[i].name, boxes: b, reviewed: false }),
       });
       images[i].labeled = true;
       ok++;
@@ -488,6 +578,7 @@ async function detectAll() {
   fill.style.width = '100%';
   text.textContent = `Detect All done: ${ok} labeled${failed ? `, ${failed} failed` : ''}`;
   renderFiles();
+  refreshChips();
   if (index >= 0) {
     await select(index);
     // select() always clears the selection - pick the first box so the
@@ -772,7 +863,7 @@ async function save() {
   if (!res.ok) { flash('save failed', true); return false; }
   dirty = false;
   images[index].labeled = true;
-  renderFiles(); status();
+  renderFiles(); status(); refreshChips();
   flash(`saved ${boxes.length} box${boxes.length === 1 ? '' : 'es'}`);
   return true;
 }

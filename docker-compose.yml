@@ -1,0 +1,16 @@
+services:
+  wbc:
+    build: .
+    ports:
+      - "5080:5080"
+    volumes:
+      - /home/skuba/skuba_ws/src/try_vision_project:/vision
+      - ./uploads:/app/uploads
+      - ./labels:/app/labels
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
