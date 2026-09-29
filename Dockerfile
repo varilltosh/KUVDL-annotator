@@ -29,11 +29,16 @@ RUN pip install \
 # Bake the BERT text encoder GroundingDINO needs into the image (no download at first detect)
 RUN python -c "from transformers import AutoTokenizer, AutoModel; AutoTokenizer.from_pretrained('bert-base-uncased'); AutoModel.from_pretrained('bert-base-uncased')"
 
+# production WSGI server (Flask's built-in one is dev-only)
+RUN pip install waitress
+
 WORKDIR /app
 COPY app.py entrypoint.sh ./
 COPY static ./static
 RUN chmod +x entrypoint.sh && mkdir -p uploads labels
 
 EXPOSE 5080
+HEALTHCHECK --interval=30s --timeout=10s --start-period=120s --retries=3 \
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:5080/api/config', timeout=8)"
 ENTRYPOINT ["./entrypoint.sh"]
 CMD ["python", "app.py"]

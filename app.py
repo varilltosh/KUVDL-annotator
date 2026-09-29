@@ -611,4 +611,16 @@ if __name__ == "__main__":
     print(f"classes   : {CLASSES}")
     port = int(os.environ.get("PORT", 5080))
     print(f"open http://localhost:{port}")
-    app.run(host="0.0.0.0", port=port, threaded=True)
+    # load the detector now so the first Auto Detect click is not a long stall
+    threading.Thread(target=get_det_model, daemon=True).start()
+    try:
+        from waitress import serve
+    except ImportError:
+        app.run(host="0.0.0.0", port=port, threaded=True)
+    else:
+        # folders are uploaded in batches of large .tif files: allow big bodies
+        # and slow clients instead of dropping the connection
+        serve(app, host="0.0.0.0", port=port,
+              threads=int(os.environ.get("WEB_THREADS", 8)),
+              max_request_body_size=16 * 1024 ** 3,
+              channel_timeout=600, cleanup_interval=60)
