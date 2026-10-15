@@ -33,6 +33,11 @@
   #brandBar .sub { font-size:15px; color:var(--muted); font-weight:500; line-height:1.35; }
   #headerRight { margin-left:auto; display:flex; flex-direction:column; gap:10px; align-items:flex-end; }
   #headerBtns { display:flex; gap:10px; align-items:center; flex-wrap:wrap; justify-content:flex-end; }
+  #topRow { display:flex; align-items:center; gap:10px; flex-wrap:wrap; justify-content:flex-end; }
+  #cropRow { display:flex; align-items:center; gap:8px; font-size:19px; font-weight:700; border:3px solid var(--navy);
+             border-radius:12px; padding:8px 14px; background:#fff; cursor:pointer; }
+  #cropRow input { width:22px; height:22px; }
+  #topRow > select { min-height:56px; }
   #statChips { display:none; gap:10px; align-items:center; flex-wrap:wrap; justify-content:flex-end; }
   .chip.alert { background:#b42318; border-color:#b42318; color:#fff; }
   .chip.alert span { color:#fff; }
@@ -43,6 +48,9 @@
   #brandBar button.primary { background:var(--navy); color:#fff; border-color:var(--navy); }
   #brandBar button.primary:hover { background:var(--navy-d); border-color:var(--navy-d); }
   #brandBar select { min-height:56px; }
+  #statsModal { display:none; position:fixed; inset:0; z-index:55; background:rgba(10,20,35,.6);
+                align-items:center; justify-content:center; padding:20px; }
+  #statsModal.open { display:flex; }
   #statsBox { background:var(--panel); border-radius:16px; padding:26px 30px; width:1100px; max-width:96vw;
               max-height:92vh; overflow:auto; box-shadow:0 16px 48px rgba(0,0,0,.35); color:var(--fg); }
   #statsBox h3 { margin:0 0 4px; font-size:28px; color:var(--navy); }
@@ -105,7 +113,7 @@
   #layout.active { display:flex; }
 
   #toolbar { padding:10px 20px; background:var(--panel); border-bottom:2px solid var(--line);
-             display:flex; align-items:center; gap:10px 14px; flex-wrap:wrap; }
+             display:flex; align-items:center; justify-content:center; gap:10px 14px; flex-wrap:wrap; }
   .group { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
   #clsGroup { background:var(--bg); border:3px solid var(--line); border-radius:14px; padding:6px 10px; }
   #clsGroup.active { border-color:var(--teal); background:var(--teal-light); }
@@ -133,7 +141,7 @@
   #main { flex:1; display:flex; flex-direction:column; min-width:0; }
 
   /* progress bar: image position normally, live detection progress while the system works */
-  #progressBar { height:56px; flex-shrink:0; position:relative; overflow:hidden;
+  #progressBar { height:48px; flex-shrink:0; position:relative; overflow:hidden;
                  background:#e3ebe7; border-bottom:2px solid var(--line); }
   #progressFill { position:absolute; top:0; bottom:0; left:0; width:0%; background:var(--lime); transition:width .25s ease; }
   #progressFill.busy { background:#5fb3a8; }
@@ -195,16 +203,23 @@
       <div class="sub">ศูนย์ชันสูตรโรคสัตว์ บางเขน มหาวิทยาลัยเกษตรศาสตร์<br>เว็บไซต์ตีกรอบเม็ดเลือดขาวอัตโนมัติ</div>
     </div>
     <div id="headerRight">
+      <div id="topRow">
+        <label id="cropRow" hidden><input type="checkbox" id="cropMode"> <span>crop image mode</span></label>
+        <select id="modelSel" aria-label="model" hidden>
+          <option value="5">5-classes</option>
+          <option value="12" selected>12-classes</option>
+        </select>
       <div id="statChips">
         <div class="chip"><b id="chAnnotated">–</b><span>ภาพที่ดำเนินการแล้ว</span></div>
         <div class="chip"><b id="chEdits">–</b><span>จำนวนการแก้ไข</span></div>
         <div class="chip"><b id="chAcc">–</b><span>ความแม่นยำของระบบ</span></div>
         <div class="chip" id="chUnsavedWrap"><b id="chUnsaved">0</b><span>การแก้ไขที่ยังไม่ได้บันทึก</span></div>
       </div>
+      </div>
       <div id="headerBtns">
         <button id="statsBtn" class="primary" type="button" hidden>แสดงตารางความแม่นยำ</button>
         <button id="exportBtn" class="primary" type="button" title="เลือกตำแหน่งที่จะบันทึกไฟล์ผลลัพธ์" hidden>ดาวน์โหลด</button>
-        <button id="newFolderBtn" class="primary" type="button" title="กลับไปหน้าอัปโหลดภาพชุดใหม่" hidden>อัปโหลดภาพชุดใหม่</button>
+        <a id="reportBtn" href="https://docs.google.com/forms/d/e/1FAIpQLSc3Qn-_PjdjHgsuC5jGw6Xesm74UMWnaY41dybgrJtXEa_OKg/viewform?usp=publish-editor" target="_blank" rel="noopener"><button class="primary" type="button">แจ้งปัญหาการใช้งาน</button></a>
         <button id="guideBtn" class="primary" type="button" title="ดูขั้นตอนการใช้งานระบบ">&#10067; วิธีใช้งาน</button>
         <select id="langSel" title="เปลี่ยนภาษา / Change language" aria-label="Language">
           <option value="th">ภาษาไทย</option>
@@ -274,6 +289,10 @@
   </div>
 
   <div id="layout">
+    <div id="progressBar">
+      <div id="progressFill"></div>
+      <div id="progressText">—</div>
+    </div>
     <div id="toolbar">
       <div class="group">
         <button id="prevBtn" title="ไปยังภาพก่อนหน้า (แป้นลูกศรซ้าย)">&larr; ภาพก่อนหน้า</button>
@@ -284,10 +303,8 @@
         <select id="clsSelect"></select>
         <button id="deleteBtn" class="danger" title="ลบกรอบที่เลือก">ลบกรอบ</button>
       </div>
-      <div class="spacer"></div>
       <div class="group">
-        <button id="saveBtn" class="primary">บันทึก (Ctrl+S)</button>
-        <button id="saveNextBtn" class="success">บันทึกและไปภาพถัดไป (Enter)</button>
+        <button id="saveNextBtn" class="success" >บันทึกและไปภาพถัดไป (Enter / Ctrl+S)</button>
       </div>
     </div>
     <div id="body">
@@ -296,10 +313,6 @@
         <div id="files"></div>
       </div>
       <div id="main">
-        <div id="progressBar">
-          <div id="progressFill"></div>
-          <div id="progressText">—</div>
-        </div>
         <div id="canvasWrap">
           <canvas id="canvas"></canvas>
           <div id="status">—</div>
@@ -326,9 +339,9 @@ const EN = {
   'เว็บไซต์ตีกรอบเม็ดเลือดขาวอัตโนมัติ':'Automatic white blood cell bounding box website',
   'ภาพที่ดำเนินการแล้ว':'Images processed', 'จำนวนการแก้ไข':'Edits', 'ความแม่นยำของระบบ':'System accuracy',
   'การแก้ไขที่ยังไม่ได้บันทึก':'Unsaved edits', 'แสดงตารางความแม่นยำ':'Show accuracy table',
-  'ดาวน์โหลด':'Download', 'อัปโหลดภาพชุดใหม่':'Upload new images', '❓ วิธีใช้งาน':'❓ How to use',
+  'ดาวน์โหลด':'Download', '❓ วิธีใช้งาน':'❓ How to use',
   'เลือกตำแหน่งที่จะบันทึกไฟล์ผลลัพธ์':'Choose where to save the result files',
-  'กลับไปหน้าอัปโหลดภาพชุดใหม่':'Back to the upload page', 'ดูขั้นตอนการใช้งานระบบ':'See how to use the system',
+  'ดูขั้นตอนการใช้งานระบบ':'See how to use the system',
     'ทุกชุดภาพ':'All image sets', 'ดาวน์โหลดไฟล์ CSV':'Download CSV file', 'ปิด':'Close', '✕ ปิด':'✕ Close',
   'วิธีใช้งานระบบ Bloodsmere':'How to use Bloodsmere', 'ปิดหน้าต่างวิธีใช้งาน':'Close how-to window',
   'ขั้นตอนก่อนหน้า':'Previous step', 'ขั้นตอนถัดไป':'Next step',
@@ -342,9 +355,9 @@ const EN = {
   'ลากภาพหรือโฟลเดอร์มาวางที่นี่':'Drag images or a folder here', 'หรือคลิกเพื่อเลือก':'or click to choose',
   '· ระบบจะรับทั้งไฟล์และโฟลเดอร์ให้โดยอัตโนมัติ':'· files and folders are both accepted',
   '← ภาพก่อนหน้า':'← Previous image', 'ภาพถัดไป →':'Next image →',
-  'ไปยังภาพก่อนหน้า (แป้นลูกศรซ้าย)':'Go to previous image (left arrow)', 'ไปยังภาพถัดไป (แป้นลูกศรขวา)':'Go to next image (right arrow)',
+  'บันทึกและไปภาพถัดไป (Enter / Ctrl+S)':'Save and go to next image (Enter / Ctrl+S)', 'ไปยังภาพก่อนหน้า (แป้นลูกศรซ้าย)':'Go to previous image (left arrow)', 'ไปยังภาพถัดไป (แป้นลูกศรขวา)':'Go to next image (right arrow)',
   'ชนิดเซลล์สำหรับกรอบใหม่':'Cell type for new boxes', 'ลบกรอบ':'Delete box', 'ลบกรอบที่เลือก':'Delete selected box',
-  'บันทึก (Ctrl+S)':'Save (Ctrl+S)', 'บันทึกและไปภาพถัดไป (Enter)':'Save and go to next image (Enter)',
+  'บันทึกและไปภาพถัดไป (Enter / Ctrl+S)':'Save and go to next image (Enter / Ctrl+S)', 'แจ้งปัญหาการใช้งาน':'Report a problem',
   'รายการภาพ':'Image list', '🔍 ขยาย +':'🔍 Zoom in +', '🔍 ย่อ −':'🔍 Zoom out −', '✋ เลื่อนภาพ':'✋ Pan',
   'ขยายภาพ':'Zoom in', 'ย่อภาพ':'Zoom out',
   'เครื่องมือเลื่อนภาพ: กดเมาส์ค้างบนภาพแล้วลากเพื่อเลื่อน':'Pan tool: hold the mouse on the image and drag',
@@ -383,7 +396,7 @@ function applyStatic() {
 const $ = id => document.getElementById(id);
 const HANDLE = 16;
 
-let CLASSES = [], DEFAULTS = {};
+let CLASSES = [], DEFAULTS = {}, MODELS = {}, MODEL = '12';
 let SESSION_ID = null;
 let images = [], index = -1, img = null, boxes = [], selected = -1, dirty = false;
 let bgBusy = false;      // background detection of the uploaded set is running (never blocks the UI)
@@ -602,7 +615,7 @@ async function loadImages() {
   $('imgCount').textContent = `(${images.length})`;
   renderFiles();
   $('statChips').style.display = 'flex';  // counters only exist once images are open
-  ['statsBtn','exportBtn','newFolderBtn'].forEach(id => $(id).hidden = false);
+  ['statsBtn','exportBtn','cropRow','modelSel'].forEach(id => $(id).hidden = false);
   refreshChips();
   if (images.length) await select(0);
 }
@@ -612,6 +625,9 @@ async function boot() {
   const cfg = await (await fetch('/api/config')).json();
   CLASSES = cfg.classes;
   DEFAULTS = cfg.defaults;
+  MODELS = cfg.models || {};
+  MODEL = cfg.default_model || '12';
+  $('modelSel').value = MODEL;
   $('clsSelect').innerHTML = CLASSES.map((n, i) => `<option value="${i}">${n}</option>`).join('');
 
   // a link like /?session_id=xyz jumps straight into a session someone
@@ -631,6 +647,20 @@ function setLang(l) {
 }
 $('langSel').addEventListener('input', e => setLang(e.target.value));
 $('langSel').addEventListener('change', e => setLang(e.target.value));
+$('modelSel').addEventListener('change', e => {
+  const m = e.target.value;
+  if (MODELS[m] && !MODELS[m].available) {
+    flash(L(`ยังไม่พบไฟล์โมเดล ${m} คลาส บนเซิร์ฟเวอร์`, `The ${m}-classes model file was not found on the server`), true);
+    e.target.value = MODEL; return;
+  }
+  MODEL = m;
+  if (MODELS[m] && MODELS[m].classes.length) {
+    CLASSES = MODELS[m].classes;
+    $('clsSelect').innerHTML = CLASSES.map((n, i) => `<option value="${i}">${n}</option>`).join('');
+    draw();
+  }
+  flash(L(`เลือกโมเดล ${m} คลาส (ใช้กับการตรวจหาครั้งถัดไป)`, `Selected ${m}-classes model (used for the next detection)`));
+});
 boot();
 applyStatic();
 
@@ -715,6 +745,7 @@ function detectParams(name) {
     max_box_area_frac: DEFAULTS.max_box_area_frac,
     nms_iou: DEFAULTS.nms_iou,
     normalize_stain: !!DEFAULTS.normalize_stain,
+    model: MODEL,
   };
 }
 
@@ -1051,13 +1082,7 @@ $('nextBtn').onclick = () => go(1);
 $('zoomInBtn').onclick = () => zoomBy(1.25);
 $('zoomOutBtn').onclick = () => zoomBy(0.8);
 $('deleteBtn').onclick = delSelected;
-$('saveBtn').onclick = save;
 $('saveNextBtn').onclick = async () => { if (await save()) go(1); };
-$('newFolderBtn').onclick = () => {
-  if (singleBusy) return;
-  if (dirty && !confirm(L('มีการแก้ไขที่ยังไม่ได้บันทึก ท่านต้องการยกเลิกการแก้ไขและอัปโหลดภาพชุดใหม่หรือไม่', 'You have unsaved edits. Discard them and upload a new image set?'))) return;
-  location.href = location.pathname;   // back to the upload screen
-};
 // the one class dropdown (top bar): changes the class of the selected box,
 // and is also the class given to the next box the user draws
 function applyClassChange(e) {
@@ -1082,7 +1107,7 @@ window.addEventListener('keydown', e => {
   if (e.target.tagName === 'SELECT' || e.target.tagName === 'INPUT') return;
   if ($('statsModal').classList.contains('open')) { if (e.key === 'Escape') $('statsModal').classList.remove('open'); return; }
   if (!$('layout').classList.contains('active')) return;
-  if (e.key === 's' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); save(); }
+  if (e.key === 's' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); $('saveNextBtn').click(); }
   else if (e.key === 'Enter') { e.preventDefault(); $('saveNextBtn').click(); }
   else if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); delSelected(); }
   else if (e.key === 'ArrowRight') { e.preventDefault(); go(1); }
@@ -1160,9 +1185,29 @@ $('guideModal').addEventListener('mousedown', e => { if (e.target === $('guideMo
 function hasWork() { return !!SESSION_ID && $('layout').classList.contains('active') && dirty; }
 window.addEventListener('beforeunload', e => { if (hasWork()) { e.preventDefault(); e.returnValue = ''; } });
 
+// crop image mode: every box is also saved as a cropped picture in crops/<class name>/
+async function writeCrops(dir, f, boxes) {
+  if (!boxes.length) return;
+  const im = await loadImg(`/img/${encodeURIComponent(SESSION_ID)}/${encodeURIComponent(f.name)}`);
+  const cdir = await (await dir.getDirectoryHandle('crops', { create: true }));
+  const stem = f.name.replace(/\.[^.]+$/, '');
+  for (let k = 0; k < boxes.length; k++) {
+    const b = boxes[k];
+    const w = Math.max(1, Math.round(b.w * im.width)), h = Math.max(1, Math.round(b.h * im.height));
+    const x = Math.round(b.cx * im.width - w / 2), y = Math.round(b.cy * im.height - h / 2);
+    const c = document.createElement('canvas'); c.width = w; c.height = h;
+    c.getContext('2d').drawImage(im, x, y, w, h, 0, 0, w, h);
+    const blob = await new Promise(r => c.toBlob(r, 'image/png'));
+    const cn = (CLASSES[b.class_id] || 'Unknown').replace(/[^\w\-]+/g, '_');
+    const sub = await cdir.getDirectoryHandle(cn, { create: true });
+    const fh = await sub.getFileHandle(`${stem}_${k + 1}.png`, { create: true });
+    const wr = await fh.createWritable(); await wr.write(blob); await wr.close();
+  }
+}
 // results are always auto-saved on the server; this copies them to a place the user picks
 async function exportLabels() {
   if (dirty && !(await save())) return;
+  const cropMode = $('cropMode').checked;
   if (window.showDirectoryPicker) {
     let dir;
     try { dir = await window.showDirectoryPicker({ mode: 'readwrite' }); }
@@ -1170,6 +1215,7 @@ async function exportLabels() {
     let n = 0;
     for (const f of images.filter(f => f.labeled)) {
       const lab = await (await fetch(`/api/label?session_id=${encodeURIComponent(SESSION_ID)}&name=${encodeURIComponent(f.name)}`)).json();
+      if (cropMode) await writeCrops(dir, f, lab.boxes);
       const txt = lab.boxes.map(b => `${b.class_id} ${b.cx.toFixed(6)} ${b.cy.toFixed(6)} ${b.w.toFixed(6)} ${b.h.toFixed(6)}`).join('\n');
       const fh = await dir.getFileHandle(f.name.replace(/\.[^.]+$/, '') + '.txt', { create: true });
       const w = await fh.createWritable(); await w.write(txt ? txt + '\n' : ''); await w.close();
@@ -1177,7 +1223,7 @@ async function exportLabels() {
     }
     flash(L(`บันทึกไฟล์ผลลัพธ์ ${n} ไฟล์เรียบร้อย`, `Downloaded ${n} result files`));
   } else {
-    location.href = '/api/export.zip?session_id=' + encodeURIComponent(SESSION_ID);   // browser's own save dialog
+    location.href = '/api/export.zip?session_id=' + encodeURIComponent(SESSION_ID) + (cropMode ? '&crops=1&model=' + MODEL : '');   // browser's own save dialog
   }
 }
 $('exportBtn').onclick = () => exportLabels().catch(e => flash(L('บันทึกไม่สำเร็จ: ', 'Save failed: ') + e.message, true));

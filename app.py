@@ -123,19 +123,34 @@ def get_det_model():
     return _det_model
 
 
-def get_cls_model():
-    global _cls_model
+# selectable class models: "12" (default, the original classifier) and "5"
+MODEL_WEIGHTS = {
+    "12": CLS_WEIGHTS,
+    "5": Path(os.environ.get(
+        "WBC_CLS5_WEIGHTS",
+        _vision_root / "label_website/wbc_website_train/rgb_cells_5classes/weights/best.pt")),
+}
+DEFAULT_MODEL = "12"
+_cls_models = {}
+
+
+def get_cls_model(key=DEFAULT_MODEL):
     with _model_lock:
-        if _cls_model is None:
-            if not CLS_WEIGHTS.exists():
-                raise RuntimeError(f"classifier weights not found: {CLS_WEIGHTS}")
-            print(f"loading classifier {CLS_WEIGHTS} ...", flush=True)
-            _cls_model = YOLO(str(CLS_WEIGHTS))
+        if key not in _cls_models:
+            w = MODEL_WEIGHTS.get(key)
+            if w is None or not w.exists():
+                raise RuntimeError(f"{key}-classes model weights not found: {w}")
+            print(f"loading classifier {w} ...", flush=True)
+            _cls_models[key] = YOLO(str(w))
             print("classifier ready", flush=True)
-    return _cls_model
+    return _cls_models[key]
 
 
-CLASSES = list(get_cls_model().names.values()) if CLS_WEIGHTS.exists() else []
+def class_names(key=DEFAULT_MODEL):
+    return list(get_cls_model(key).names.values())
+
+
+CLASSES = class_names() if CLS_WEIGHTS.exists() else []
 CLASS_ID = {name: i for i, name in enumerate(CLASSES)}
 
 
@@ -392,7 +407,7 @@ def crop_square(bgr, cx_px, cy_px, side):
     return cv2.resize(sub, (CROP_PX, CROP_PX), interpolation=cv2.INTER_AREA)
 
 
-def classify_crop(bgr_field, box):
+def classify_crop(bgr_field, box, model_key=DEFAULT_MODEL):
     """Crop `box` (cxcywh, normalised) out of the (already stain-matched) field and classify it."""
     H, W = bgr_field.shape[:2]
     cx, cy, w, h = box
@@ -401,7 +416,7 @@ def classify_crop(bgr_field, box):
     if crop is None:
         return None, 0.0
 
-    model = get_cls_model()
+    model = get_cls_model(model_key)
     with GPU_LOCK:
         res = model.predict(crop, verbose=False, device=DEVICE)[0]
     if res.boxes is None or len(res.boxes) == 0:
@@ -428,7 +443,8 @@ def gdino_predict_bgr(bgr, box_threshold, text_threshold):
 
 
 def detect_and_classify(image_path, box_threshold, text_threshold,
-                        max_box_area_frac, nms_iou, normalize_stain):
+                        max_box_area_frac, nms_iou, normalize_stain, model_key=DEFAULT_MODEL):
+    names = class_names(model_key)
     bgr = cv2.imread(str(image_path))
     if bgr is None:
         # cv2 cannot read some TIFF variants - fall back to PIL
@@ -446,10 +462,10 @@ def detect_and_classify(image_path, box_threshold, text_threshold,
 
     out = []
     for (cx, cy, w, h), det_score in zip(boxes.tolist(), logits.tolist()):
-        cid, cls_score = classify_crop(bgr, (cx, cy, w, h))
+        cid, cls_score = classify_crop(bgr, (cx, cy, w, h), model_key)
         out.append({
             "class_id": cid if cid is not None else -1,
-            "class_name": CLASSES[cid] if cid is not None and cid < len(CLASSES) else "Unknown",
+            "class_name": names[cid] if cid is not None and cid < len(names) else "Unknown",
             "cx": cx, "cy": cy, "w": w, "h": h,
             "det_score": round(float(det_score), 4),
             "cls_score": round(float(cls_score), 4),
@@ -471,6 +487,9 @@ def api_config():
         "cls_weights": str(CLS_WEIGHTS),
         "device": DEVICE,
         "classes": CLASSES,
+        "models": {k: {"available": w.exists(), "classes": class_names(k) if w.exists() else []}
+                   for k, w in MODEL_WEIGHTS.items()},
+        "default_model": DEFAULT_MODEL,
         "defaults": DETECT_DEFAULTS,
     })
 
@@ -570,6 +589,27 @@ def api_export_zip():
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
         for f in sorted((LABEL_ROOT / sid).glob("*.txt")):
             z.write(f, f.name)
+        if request.args.get("crops"):
+            names = class_names(request.args.get("model", DEFAULT_MODEL)
+                                if request.args.get("model") in MODEL_WEIGHTS else DEFAULT_MODEL)
+            for lf in sorted((LABEL_ROOT / sid).glob("*.txt")):
+                img_p = next((q for q in (UPLOAD_ROOT / sid).iterdir() if q.stem == lf.stem), None) \
+                    if (UPLOAD_ROOT / sid).exists() else None
+                if img_p is None:
+                    continue
+                try:
+                    im = Image.open(img_p).convert("RGB")
+                except Exception:
+                    continue
+                W, H = im.size
+                for k, b in enumerate(read_label(sid, lf.stem) or []):
+                    w, h = b["w"] * W, b["h"] * H
+                    x0, y0 = b["cx"] * W - w / 2, b["cy"] * H - h / 2
+                    c = im.crop((int(x0), int(y0), int(x0 + w) + 1, int(y0 + h) + 1))
+                    cn = names[b["class_id"]] if 0 <= b["class_id"] < len(names) else "Unknown"
+                    cn = "".join(ch if ch.isalnum() or ch in "-_" else "_" for ch in cn)
+                    bio = io.BytesIO(); c.save(bio, "PNG")
+                    z.writestr(f"crops/{cn}/{lf.stem}_{k + 1}.png", bio.getvalue())
     buf.seek(0)
     return send_file(buf, mimetype="application/zip", as_attachment=True, download_name="labels.zip")
 
@@ -616,6 +656,7 @@ def api_detect():
             float(body.get("max_box_area_frac", DETECT_DEFAULTS["max_box_area_frac"])),
             float(body.get("nms_iou", DETECT_DEFAULTS["nms_iou"])),
             bool(body.get("normalize_stain", DETECT_DEFAULTS["normalize_stain"])),
+            body.get("model", DEFAULT_MODEL) if body.get("model") in MODEL_WEIGHTS else DEFAULT_MODEL,
         )
     except Exception as e:
         return jsonify({"error": str(e)}), 500
