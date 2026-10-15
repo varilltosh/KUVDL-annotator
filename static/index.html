@@ -3,17 +3,20 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>HemaScan – ระบบตรวจและจำแนกเม็ดเลือดขาวอัตโนมัติ</title>
+<title>Bloodsmere Auto Annotation Website</title>
 <style>
   /* Professional, calm palette with large type and generous targets for older users:
      20px base text, every control >= 56px tall, strong contrast, visible focus rings. */
   :root {
-    --bg:#eef1f5; --panel:#ffffff; --line:#cfd6e0; --fg:#111827; --muted:#475467;
-    --navy:#12355b; --navy-d:#0c2543; --teal:#0f766e; --teal-light:#d8efec;
-    --accent:#12355b; --accent-light:#dbe7f5;
+    /* palette taken from the KUVDL-BK logo: deep teal + olive/lime green */
+    --bg:#f1f5f2; --panel:#ffffff; --line:#cfdbd6; --fg:#10201e; --muted:#46605b;
+    --navy:#0e6b63; --navy-d:#0a504a; --teal:#0e6b63; --teal-light:#d9eeea;
+    --lime:#a5b92c; --lime-d:#7f9019; --lime-light:#eef3cf;
+    --accent:#0e6b63; --accent-light:#dcefeb;
     --ok:#15803d; --danger:#b42318; --warn:#b45309;
   }
   * { box-sizing:border-box; }
+  [hidden] { display:none !important; }
   html, body { margin:0; height:100%; background:var(--bg); color:var(--fg); overflow:hidden;
                font-family:"Sarabun","Noto Sans Thai","Noto Sans Thai Looped","Tahoma","Leelawadee UI",system-ui,sans-serif;
                font-size:20px; line-height:1.5; }
@@ -21,29 +24,25 @@
   #page { height:100vh; display:flex; flex-direction:column; }
 
   /* ---------------- header ---------------- */
-  #brandBar { flex-shrink:0; background:var(--navy); color:#fff; display:flex; align-items:center; gap:18px;
-              padding:10px 28px; flex-wrap:wrap; border-bottom:5px solid var(--teal); }
-  #brandBar .logoWrap { background:#fff; border-radius:12px; width:60px; height:60px; display:flex;
-                        align-items:center; justify-content:center; flex-shrink:0; }
-  #brandBar img { height:46px; width:46px; object-fit:contain; }
-  #brandBar .name { font-size:30px; font-weight:800; letter-spacing:.02em; line-height:1.15; }
-  #brandBar .name span { color:#7ee0d4; }
-  #brandBar .sub { font-size:17px; color:#d3deec; font-weight:500; }
-  #headerRight { margin-left:auto; display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
-  #statChips { display:none; gap:12px; align-items:center; flex-wrap:wrap; }
-  .chip.alert { background:#b42318; border-color:#fff; }
+  #brandBar { flex-shrink:0; background:#fff; color:var(--fg); display:flex; align-items:center; gap:24px;
+              padding:8px 28px; flex-wrap:wrap; border-bottom:6px solid var(--lime); }
+  #brandBar .brandLeft { display:flex; flex-direction:column; gap:2px; max-width:560px; }
+  #brandBar .logoWrap { background:#fff; width:340px; height:94px; position:relative; overflow:hidden; flex-shrink:0; }
+  #brandBar img { position:absolute; width:357px; height:357px; left:-9px; top:-132px; }
+  #brandBar .name { font-size:24px; font-weight:800; line-height:1.2; color:var(--navy); }
+  #brandBar .sub { font-size:15px; color:var(--muted); font-weight:500; line-height:1.35; }
+  #headerRight { margin-left:auto; display:flex; flex-direction:column; gap:10px; align-items:flex-end; }
+  #headerBtns { display:flex; gap:10px; align-items:center; flex-wrap:wrap; justify-content:flex-end; }
+  #statChips { display:none; gap:10px; align-items:center; flex-wrap:wrap; justify-content:flex-end; }
+  .chip.alert { background:#b42318; border-color:#b42318; color:#fff; }
   .chip.alert span { color:#fff; }
-  .chip { background:rgba(255,255,255,.12); border:2px solid rgba(255,255,255,.28); border-radius:12px;
+  .chip { background:var(--teal-light); border:2px solid var(--teal); border-radius:12px;
           padding:2px 16px; text-align:center; line-height:1.25; }
-  .chip b { display:block; font-size:24px; font-variant-numeric:tabular-nums; }
-  .chip span { font-size:15px; color:#d3deec; }
-  #brandBar button { background:#fff; color:var(--navy); border-color:#fff; }
-  #brandBar button:hover { background:#e6edf6; }
-
-  /* ---------------- stats modal ---------------- */
-  #statsModal { display:none; position:fixed; inset:0; z-index:50; background:rgba(10,20,35,.6);
-                align-items:center; justify-content:center; }
-  #statsModal.open { display:flex; }
+  .chip b { display:block; font-size:22px; font-variant-numeric:tabular-nums; }
+  .chip span { font-size:14px; color:var(--muted); }
+  #brandBar button.primary { background:var(--navy); color:#fff; border-color:var(--navy); }
+  #brandBar button.primary:hover { background:var(--navy-d); border-color:var(--navy-d); }
+  #brandBar select { min-height:56px; }
   #statsBox { background:var(--panel); border-radius:16px; padding:26px 30px; width:1100px; max-width:96vw;
               max-height:92vh; overflow:auto; box-shadow:0 16px 48px rgba(0,0,0,.35); color:var(--fg); }
   #statsBox h3 { margin:0 0 4px; font-size:28px; color:var(--navy); }
@@ -51,7 +50,7 @@
   #statsBox table { border-collapse:collapse; width:100%; font-size:18px; font-variant-numeric:tabular-nums; }
   #statsBox th, #statsBox td { padding:10px 12px; border-bottom:2px solid var(--line); text-align:right; }
   #statsBox th:first-child, #statsBox td:first-child { text-align:left; }
-  #statsBox th { color:var(--fg); font-weight:700; font-size:17px; background:#eef1f5; }
+  #statsBox th { color:var(--fg); font-weight:700; font-size:17px; background:var(--lime-light); }
   #statsBox td.diag { background:var(--teal-light); font-weight:700; }
   #statsBox .kpis { display:flex; gap:12px; flex-wrap:wrap; margin:14px 0; }
   #statsBox .chip { background:var(--bg); border-color:var(--line); }
@@ -69,7 +68,7 @@
   button.primary { background:var(--navy); border-color:var(--navy); color:#fff; }
   button.primary:hover { background:var(--navy-d); border-color:var(--navy-d); }
   button.success { background:var(--teal); border-color:var(--teal); color:#fff; }
-  button.success:hover { background:#0b5a54; border-color:#0b5a54; }
+  button.success:hover { background:var(--navy-d); border-color:var(--navy-d); }
   button.danger { color:var(--danger); border-color:var(--danger); }
   button.danger:hover { background:#fdecea; }
   button.toggle.active { background:var(--navy); border-color:var(--navy); color:#fff; }
@@ -78,8 +77,8 @@
            padding:8px 14px; font-size:20px; font-weight:700; min-width:300px; font-family:inherit; }
 
   /* ---------------- upload screen ---------------- */
-  #uploadScreen { flex:1; display:flex; align-items:center; justify-content:center; flex-direction:column;
-                  gap:22px; padding:24px; overflow:auto; }
+  #uploadScreen { flex:1; display:flex; align-items:center; justify-content:safe center; flex-direction:column;
+                  gap:14px; padding:24px; overflow:auto; }
   #uploadScreen h1 { font-size:38px; margin:0; font-weight:800; color:var(--navy); text-align:center; line-height:1.3; }
   #uploadScreen p.lead { color:var(--muted); font-size:22px; margin:0; max-width:820px; text-align:center; line-height:1.6; }
   #steps { display:flex; gap:14px; flex-wrap:wrap; justify-content:center; }
@@ -87,7 +86,7 @@
           border-radius:14px; padding:10px 18px; font-size:19px; font-weight:600; }
   .step i { font-style:normal; width:36px; height:36px; border-radius:50%; background:var(--teal); color:#fff;
             display:flex; align-items:center; justify-content:center; font-weight:800; flex-shrink:0; }
-  #dropZone { width:820px; max-width:94vw; padding:56px 24px; border:5px dashed #8795a8; border-radius:22px;
+  #dropZone { width:820px; max-width:94vw; padding:30px 24px; border:5px dashed var(--lime-d); border-radius:22px;
               text-align:center; cursor:pointer; background:var(--panel); transition:.15s;
               box-shadow:0 4px 16px rgba(18,53,91,.08); }
   #dropZone:hover, #dropZone.drag { border-color:var(--teal); background:var(--teal-light); }
@@ -98,7 +97,7 @@
   #uploadStatus.err { color:var(--danger); }
   #uploadProgress { display:none; width:820px; max-width:94vw; }
   #uploadProgress.active { display:block; }
-  #uploadProgressTrack { height:24px; border-radius:12px; background:#d5dbe4; overflow:hidden; }
+  #uploadProgressTrack { height:28px; border:2px solid var(--teal); border-radius:12px; background:#d5dbe4; overflow:hidden; }
   #uploadProgressFill { height:100%; width:0%; background:var(--teal); transition:width .15s ease; }
 
   /* ---------------- workspace ---------------- */
@@ -135,9 +134,9 @@
 
   /* progress bar: image position normally, live detection progress while the system works */
   #progressBar { height:56px; flex-shrink:0; position:relative; overflow:hidden;
-                 background:#dfe5ed; border-bottom:2px solid var(--line); }
-  #progressFill { position:absolute; top:0; bottom:0; left:0; width:0%; background:#8fd3cb; transition:width .25s ease; }
-  #progressFill.busy { background:#7ec3ff; }
+                 background:#e3ebe7; border-bottom:2px solid var(--line); }
+  #progressFill { position:absolute; top:0; bottom:0; left:0; width:0%; background:var(--lime); transition:width .25s ease; }
+  #progressFill.busy { background:#5fb3a8; }
   #progressText { position:relative; z-index:1; height:100%; display:flex; align-items:center; justify-content:center;
                   font-size:21px; font-weight:700; padding:0 12px; text-align:center; }
 
@@ -176,10 +175,10 @@
   #guideStage figcaption span { display:block; font-size:21px; color:var(--muted); }
   .navArrow { width:72px; height:72px; border-radius:50%; font-size:30px; padding:0; flex-shrink:0; }
   #guideDots { display:flex; justify-content:center; gap:10px; padding:8px 0; }
-  #guideDots span { width:16px; height:16px; border-radius:50%; background:#c3cad5; cursor:pointer; }
+  #guideDots span { width:16px; height:16px; border-radius:50%; background:#c3d3cd; cursor:pointer; }
   #guideDots span.on { background:var(--teal); transform:scale(1.25); }
   #guideBg { margin:4px 22px 0; padding:8px 14px; background:var(--accent-light); border-radius:12px; font-size:19px; font-weight:600; }
-  #guideBgTrack { height:12px; border-radius:6px; background:#c7d4e6; margin-top:6px; overflow:hidden; }
+  #guideBgTrack { height:12px; border-radius:6px; background:#cfe0da; margin-top:6px; overflow:hidden; }
   #guideBgFill { height:100%; width:0%; background:var(--teal); transition:width .25s ease; }
   .guideFoot { display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; padding:12px 22px 16px; }
   .guideFoot label { font-size:19px; }
@@ -190,10 +189,10 @@
 
 <div id="page">
   <header id="brandBar">
-    <div class="logoWrap"><img src="/static/img/ku_logo.png" alt="โลโก้มหาวิทยาลัยเกษตรศาสตร์"></div>
-    <div>
-      <div class="name">Hema<span>Scan</span></div>
-      <div class="sub">ระบบตรวจและจำแนกเม็ดเลือดขาวอัตโนมัติ &middot; มหาวิทยาลัยเกษตรศาสตร์</div>
+    <div class="brandLeft">
+      <div class="logoWrap"><img src="/static/img/logo.jpg" alt="KUVDL-BK ศูนย์ชันสูตรโรคสัตว์ บางเขน"></div>
+      <div class="name">Bloodsmere Auto Annotation Website</div>
+      <div class="sub">ศูนย์ชันสูตรโรคสัตว์ บางเขน มหาวิทยาลัยเกษตรศาสตร์<br>เว็บไซต์ตีกรอบเม็ดเลือดขาวอัตโนมัติ</div>
     </div>
     <div id="headerRight">
       <div id="statChips">
@@ -201,18 +200,24 @@
         <div class="chip"><b id="chEdits">–</b><span>จำนวนการแก้ไข</span></div>
         <div class="chip"><b id="chAcc">–</b><span>ความแม่นยำของระบบ</span></div>
         <div class="chip" id="chUnsavedWrap"><b id="chUnsaved">0</b><span>การแก้ไขที่ยังไม่ได้บันทึก</span></div>
-        <button id="statsBtn" type="button">แสดงตารางความแม่นยำ</button>
-        <button id="newFolderBtn" type="button" title="กลับไปหน้าอัปโหลดภาพชุดใหม่">อัปโหลดภาพชุดใหม่</button>
       </div>
-      <button id="guideBtn" type="button" title="ดูขั้นตอนการใช้งานระบบ">&#10067; วิธีใช้งาน</button>
+      <div id="headerBtns">
+        <button id="statsBtn" class="primary" type="button" hidden>แสดงตารางความแม่นยำ</button>
+        <button id="exportBtn" class="primary" type="button" title="เลือกตำแหน่งที่จะบันทึกไฟล์ผลลัพธ์" hidden>ดาวน์โหลด</button>
+        <button id="newFolderBtn" class="primary" type="button" title="กลับไปหน้าอัปโหลดภาพชุดใหม่" hidden>อัปโหลดภาพชุดใหม่</button>
+        <button id="guideBtn" class="primary" type="button" title="ดูขั้นตอนการใช้งานระบบ">&#10067; วิธีใช้งาน</button>
+        <select id="langSel" title="เปลี่ยนภาษา / Change language" aria-label="Language">
+          <option value="th">ภาษาไทย</option>
+          <option value="en">English</option>
+        </select>
+      </div>
     </div>
   </header>
 
   <div id="statsModal">
     <div id="statsBox">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
-        <h3>ความแม่นยำของระบบและสถิติการดำเนินงาน</h3>
-        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <div hidden style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
           <label><input type="checkbox" id="statsAll"> ทุกชุดภาพ</label>
           <a id="statsCsv" href="#"><button type="button">ดาวน์โหลดไฟล์ CSV</button></a>
           <button id="statsClose" type="button">ปิด</button>
@@ -225,7 +230,7 @@
   <div id="guideModal" role="dialog" aria-modal="true" aria-labelledby="guideTitle">
     <div id="guideBox">
       <div class="guideHead">
-        <h3 id="guideTitle">วิธีใช้งานระบบ HemaScan</h3>
+        <h3 id="guideTitle">วิธีใช้งานระบบ Bloodsmere</h3>
         <button id="guideClose" type="button" aria-label="ปิดหน้าต่างวิธีใช้งาน">&#10005; ปิด</button>
       </div>
       <div id="guideStage">
@@ -242,7 +247,6 @@
         <div id="guideBgTrack"><div id="guideBgFill"></div></div>
       </div>
       <div class="guideFoot">
-        <label><input type="checkbox" id="guideSkip">ไม่ต้องแสดงอัตโนมัติอีก</label>
         <span id="guideCount"></span>
         <button id="guideDone" class="primary" type="button">เข้าใจแล้ว เริ่มใช้งาน</button>
       </div>
@@ -304,13 +308,6 @@
             <button id="zoomOutBtn" title="ย่อภาพ">&#128269; ย่อ &minus;</button>
             <button id="panBtn" class="toggle" title="เครื่องมือเลื่อนภาพ: กดเมาส์ค้างบนภาพแล้วลากเพื่อเลื่อน">&#9995; เลื่อนภาพ</button>
           </div>
-          <div id="help">
-            <b>คำแนะนำการใช้งาน</b><br>
-            &bull; ลากบนพื้นที่ว่างเพื่อสร้างกรอบใหม่ &middot; ลากภายในกรอบเพื่อเลื่อนตำแหน่ง &middot; ลากที่มุมกรอบเพื่อปรับขนาด<br>
-            &bull; คลิกที่กรอบ แล้วเลือกชนิดเซลล์ที่ถูกต้องจากแถบด้านบน<br>
-            &bull; แป้นลัด: D ตรวจซ้ำเฉพาะภาพนี้ &middot; F พอดีจอ &middot; Enter บันทึกและไปภาพถัดไป &middot; &larr; &rarr; เปลี่ยนภาพ &middot; Tab สลับกรอบ
-          </div>
-          <button id="helpToggle" type="button" title="ซ่อนหรือแสดงคำแนะนำ">ซ่อนคำแนะนำ</button>
           <div id="flash"></div>
         </div>
       </div>
@@ -319,6 +316,70 @@
 </div>
 
 <script>
+// ------------------------------------------------------------ language --
+let LANG = 'th';
+try { LANG = localStorage.getItem('bloodsmereLang') || 'th'; } catch (e) { /* storage blocked */ }
+const L = (th, en) => LANG === 'en' ? en : th;
+// static page text: Thai (as written in the HTML) -> English
+const EN = {
+  'ศูนย์ชันสูตรโรคสัตว์ บางเขน มหาวิทยาลัยเกษตรศาสตร์':'Kasetsart University Veterinary Diagnostic Laboratory, Bangkhen',
+  'เว็บไซต์ตีกรอบเม็ดเลือดขาวอัตโนมัติ':'Automatic white blood cell bounding box website',
+  'ภาพที่ดำเนินการแล้ว':'Images processed', 'จำนวนการแก้ไข':'Edits', 'ความแม่นยำของระบบ':'System accuracy',
+  'การแก้ไขที่ยังไม่ได้บันทึก':'Unsaved edits', 'แสดงตารางความแม่นยำ':'Show accuracy table',
+  'ดาวน์โหลด':'Download', 'อัปโหลดภาพชุดใหม่':'Upload new images', '❓ วิธีใช้งาน':'❓ How to use',
+  'เลือกตำแหน่งที่จะบันทึกไฟล์ผลลัพธ์':'Choose where to save the result files',
+  'กลับไปหน้าอัปโหลดภาพชุดใหม่':'Back to the upload page', 'ดูขั้นตอนการใช้งานระบบ':'See how to use the system',
+    'ทุกชุดภาพ':'All image sets', 'ดาวน์โหลดไฟล์ CSV':'Download CSV file', 'ปิด':'Close', '✕ ปิด':'✕ Close',
+  'วิธีใช้งานระบบ Bloodsmere':'How to use Bloodsmere', 'ปิดหน้าต่างวิธีใช้งาน':'Close how-to window',
+  'ขั้นตอนก่อนหน้า':'Previous step', 'ขั้นตอนถัดไป':'Next step',
+  'ระบบกำลังตรวจหาเซลล์ให้ท่านอยู่เบื้องหลัง':'The system is detecting cells in the background',
+  'เข้าใจแล้ว เริ่มใช้งาน':'Got it, start',
+  'ตรวจและจำแนกเม็ดเลือดขาวจากภาพสไลด์':'Detect and classify white blood cells from slide images',
+  'อัปโหลดภาพหรือโฟลเดอร์ภาพสไลด์เลือด ระบบจะตรวจหาและจำแนกเม็ดเลือดขาวให้โดยอัตโนมัติ จากนั้นท่านเพียงตรวจสอบและแก้ไขให้ถูกต้อง':
+    'Upload blood slide images or a folder. The system detects and classifies white blood cells automatically; you only review and correct them.',
+  'อัปโหลดภาพ':'Upload images', 'ระบบตรวจหาอัตโนมัติ':'Automatic detection', 'ตรวจสอบและบันทึก':'Review and save',
+  'อัปโหลดภาพหรือโฟลเดอร์':'Upload images or a folder',
+  'ลากภาพหรือโฟลเดอร์มาวางที่นี่':'Drag images or a folder here', 'หรือคลิกเพื่อเลือก':'or click to choose',
+  '· ระบบจะรับทั้งไฟล์และโฟลเดอร์ให้โดยอัตโนมัติ':'· files and folders are both accepted',
+  '← ภาพก่อนหน้า':'← Previous image', 'ภาพถัดไป →':'Next image →',
+  'ไปยังภาพก่อนหน้า (แป้นลูกศรซ้าย)':'Go to previous image (left arrow)', 'ไปยังภาพถัดไป (แป้นลูกศรขวา)':'Go to next image (right arrow)',
+  'ชนิดเซลล์สำหรับกรอบใหม่':'Cell type for new boxes', 'ลบกรอบ':'Delete box', 'ลบกรอบที่เลือก':'Delete selected box',
+  'บันทึก (Ctrl+S)':'Save (Ctrl+S)', 'บันทึกและไปภาพถัดไป (Enter)':'Save and go to next image (Enter)',
+  'รายการภาพ':'Image list', '🔍 ขยาย +':'🔍 Zoom in +', '🔍 ย่อ −':'🔍 Zoom out −', '✋ เลื่อนภาพ':'✋ Pan',
+  'ขยายภาพ':'Zoom in', 'ย่อภาพ':'Zoom out',
+  'เครื่องมือเลื่อนภาพ: กดเมาส์ค้างบนภาพแล้วลากเพื่อเลื่อน':'Pan tool: hold the mouse on the image and drag',
+};
+const EN_RE = [];   // (kept for future pattern rules)
+const origText = new WeakMap(), origAttr = new WeakMap();
+function normTxt(t) { return t.replace(/\s+/g, ' ').trim(); }
+function applyStatic() {
+  const w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+  let n;
+  while ((n = w.nextNode())) {
+    if (n.parentElement && /^(SCRIPT|STYLE)$/.test(n.parentElement.tagName)) continue;
+    let o = origText.get(n);
+    if (o === undefined) {
+      const k = normTxt(n.nodeValue);
+      if (!k || !/[฀-๿]|^❓|^🔍|^✋|^✕/.test(k) && !EN[k]) continue;
+      o = n.nodeValue; origText.set(n, o);
+    }
+    const k = normTxt(o);
+    if (EN[k] !== undefined) n.nodeValue = LANG === 'en' ? o.replace(k, EN[k]) : o;
+  }
+  document.querySelectorAll('[title],[aria-label],[alt]').forEach(el => {
+    for (const a of ['title', 'aria-label', 'alt']) {
+      if (!el.hasAttribute(a)) continue;
+      let m = origAttr.get(el); if (!m) { m = {}; origAttr.set(el, m); }
+      if (m[a] === undefined) m[a] = el.getAttribute(a);
+      const k = normTxt(m[a]);
+      if (a !== 'title' || k !== 'เปลี่ยนภาษา / Change language')
+        el.setAttribute(a, LANG === 'en' && EN[k] !== undefined ? EN[k] : m[a]);
+    }
+  });
+  document.documentElement.lang = LANG;
+}
+
+
 const $ = id => document.getElementById(id);
 const HANDLE = 16;
 
@@ -367,25 +428,26 @@ async function openStats() {
   const e = st.edits;
   const kpi = (v, l) => `<div class="chip"><b>${v}</b><span>${l}</span></div>`;
   let h = `<div class="kpis">
-    ${kpi(st.images_annotated + (all || !SESSION_ID ? '' : ' / ' + st.images_total), 'ภาพที่ดำเนินการแล้ว')}
-    ${kpi(st.images_reviewed, 'ภาพที่ผู้ใช้ตรวจสอบแล้ว')}
-    ${kpi(st.images_edited, 'ภาพที่มีการแก้ไข')}
-    ${kpi(e.total, 'จำนวนครั้งที่แก้ไข')}
-    ${kpi(pct(st.class_accuracy), 'ความถูกต้องของการจำแนกชนิด')}
-    ${kpi(pct(st.detection_precision), 'ความแม่นยำของกรอบ')}
+    ${kpi(st.images_annotated + (all || !SESSION_ID ? '' : ' / ' + st.images_total), L('ภาพที่ดำเนินการแล้ว', 'Images processed'))}
+    ${kpi(st.images_reviewed, L('ภาพที่ผู้ใช้ตรวจสอบแล้ว', 'Images reviewed by user'))}
+    ${kpi(st.images_edited, L('ภาพที่มีการแก้ไข', 'Images edited'))}
+    ${kpi(e.total, L('จำนวนครั้งที่แก้ไข', 'Number of edits'))}
+    ${kpi(pct(st.class_accuracy), L('ความถูกต้องของการจำแนกชนิด', 'Classification accuracy'))}
+    ${kpi(pct(st.detection_precision), L('ความแม่นยำของกรอบ', 'Box precision'))}
   </div>
-  <h4>รายการแก้ไขจากผลการจำแนกของระบบ</h4>
-  <table><tr><th></th><th>เปลี่ยนชนิด</th><th>ย้าย/ปรับขนาดกรอบ</th><th>ลบกรอบ</th><th>เพิ่มกรอบ</th><th>รวม</th></tr>
-  <tr><td>จำนวน</td><td>${e.class_changed}</td><td>${e.box_adjusted}</td><td>${e.deleted}</td><td>${e.added}</td><td><b>${e.total}</b></td></tr></table>
-  <h4>ความแม่นยำแยกตามชนิดเซลล์</h4>
-  <table><tr><th>ชนิดเซลล์</th><th>ระบบจำแนกเป็น</th><th>ถูก</th><th>ผิด</th><th>ชนิดที่แท้จริง</th><th>ความแม่นยำ</th><th>ความครบถ้วน</th></tr>
+  <h4>${L('รายการแก้ไขจากผลการจำแนกของระบบ','Edits made to the system results')}</h4>
+  <table><tr><th></th><th>${L('เปลี่ยนชนิด','Class changed')}</th><th>${L('ย้าย/ปรับขนาดกรอบ','Box moved/resized')}</th><th>${L('ลบกรอบ','Box deleted')}</th><th>${L('เพิ่มกรอบ','Box added')}</th><th>${L('รวม','Total')}</th></tr>
+  <tr><td>${L('จำนวน','Count')}</td><td>${e.class_changed}</td><td>${e.box_adjusted}</td><td>${e.deleted}</td><td>${e.added}</td><td><b>${e.total}</b></td></tr></table>
+  <h4>${L('ความแม่นยำแยกตามชนิดเซลล์','Accuracy by cell type')}</h4>
+  <table><tr><th>${L('ชนิดเซลล์','Cell type')}</th><th>${L('ระบบจำแนกเป็น','Predicted as')}</th><th>${L('ถูก','Correct')}</th><th>${L('ผิด','Wrong')}</th><th>${L('ชนิดที่แท้จริง','Actual')}</th><th>${L('ความแม่นยำ','Precision')}</th><th>${L('ความครบถ้วน','Recall')}</th></tr>
   ${st.per_class.map(c => `<tr><td>${c.class}</td><td>${c.predicted}</td><td>${c.correct}</td><td>${c.wrong}</td><td>${c.actual}</td><td>${pct(c.precision)}</td><td>${pct(c.recall)}</td></tr>`).join('')}
   </table>
-  <h4>ตารางเปรียบเทียบ (แถว: ผลจากระบบ, คอลัมน์: ผลหลังการแก้ไขโดยผู้ใช้)</h4>
+  <h4>${L('ตารางเปรียบเทียบ (แถว: ผลจากระบบ, คอลัมน์: ผลหลังการแก้ไขโดยผู้ใช้)','Confusion matrix (rows: system result, columns: result after user edit)')}</h4>
   <table><tr><th></th>${st.classes.map(c => `<th>${c}</th>`).join('')}</tr>
   ${st.confusion.map((row, i) => `<tr><td>${st.classes[i]}</td>${row.map((v, j) => `<td class="${i === j ? 'diag' : ''}">${v}</td>`).join('')}</tr>`).join('')}
   </table>
-  <p class="note">หมายเหตุ: นับเฉพาะภาพที่ผู้ใช้บันทึกหลังการตรวจหาเซลล์ (ผลจากการตรวจหาอัตโนมัติที่ยังไม่ได้ตรวจสอบจะไม่ถูกนับ) กรอบจะถือว่าตรงกันเมื่อค่า IoU &ge; 0.5 และ &ldquo;ย้าย/ปรับขนาดกรอบ&rdquo; หมายถึงกรอบที่ตรงกันแต่มีค่า IoU &lt; 0.9</p>`;
+  <p class="note">${L('หมายเหตุ: นับเฉพาะภาพที่ผู้ใช้บันทึกหลังการตรวจหาเซลล์ (ผลจากการตรวจหาอัตโนมัติที่ยังไม่ได้ตรวจสอบจะไม่ถูกนับ) กรอบจะถือว่าตรงกันเมื่อค่า IoU ≥ 0.5 และ “ย้าย/ปรับขนาดกรอบ” หมายถึงกรอบที่ตรงกันแต่มีค่า IoU < 0.9',
+    'Note: only images the user saved after detection are counted (unreviewed automatic results are not). Boxes match when IoU ≥ 0.5; “Box moved/resized” means matched boxes with IoU < 0.9.')}</p>`;
   $('statsBody').innerHTML = h;
   $('statsModal').classList.add('open');
 }
@@ -402,7 +464,7 @@ function updateProgress() {
   if (index < 0 || !images.length) { fill.style.width = '0%'; text.textContent = '—'; return; }
   const done = index + 1, total = images.length, left = total - done;
   fill.style.width = (done / total * 100) + '%';
-  text.textContent = `ภาพที่ ${done} จากทั้งหมด ${total} ภาพ  ·  คงเหลือ ${left} ภาพ`;
+  text.textContent = L(`ภาพที่ ${done} จากทั้งหมด ${total} ภาพ  ·  คงเหลือ ${left} ภาพ`, `Image ${done} of ${total}  ·  ${left} remaining`);
 }
 
 function setDetectingProgress(on) {
@@ -410,7 +472,7 @@ function setDetectingProgress(on) {
   if (on) {
     fill.classList.add('busy');
     fill.style.width = '100%';
-    text.textContent = `ระบบกำลังตรวจหาเซลล์ในภาพที่ ${index + 1} โปรดรอสักครู่`;
+    text.textContent = L(`ระบบกำลังตรวจหาเซลล์ในภาพที่ ${index + 1} โปรดรอสักครู่`, `Detecting cells in image ${index + 1}, please wait`);
   } else {
     updateProgress();
   }
@@ -491,12 +553,13 @@ async function upload(fileList) {
   status.classList.remove('err');
   if (!files.length) {
     status.classList.add('err');
-    status.textContent = 'ไม่พบไฟล์ภาพที่รองรับ กรุณาเลือกไฟล์หรือโฟลเดอร์ที่มีภาพ';
+    status.textContent = L('ไม่พบไฟล์ภาพที่รองรับ กรุณาเลือกไฟล์หรือโฟลเดอร์ที่มีภาพ', 'No supported image files found. Please choose images or a folder containing images.');
     return;
   }
   const totalBytes = files.reduce((s, f) => s + f.size, 0) || 1;
   const totalMB = fmtMB(totalBytes);
   $('uploadProgress').classList.add('active');
+  $('uploadProgress').scrollIntoView({ block: 'nearest' });
   $('uploadProgressFill').style.width = '0%';
 
   try {
@@ -507,17 +570,17 @@ async function upload(fileList) {
       const d = await postBatch(batch, sid, loaded => {
         const sent = doneBytes + loaded, pct = Math.min(100, Math.round(sent / totalBytes * 100));
         $('uploadProgressFill').style.width = pct + '%';
-        status.textContent = `กำลังอัปโหลดภาพจำนวน ${files.length} ภาพ  ${fmtMB(sent)} / ${totalMB} MB (${pct}%)`;
+        status.textContent = L(`กำลังอัปโหลดภาพจำนวน ${files.length} ภาพ  ${fmtMB(sent)} / ${totalMB} MB (${pct}%)`, `Uploading ${files.length} images  ${fmtMB(sent)} / ${totalMB} MB (${pct}%)`);
       });
       sid = d.session_id;
       doneBytes += batchBytes;
     }
     $('uploadProgressFill').style.width = '100%';
-    status.textContent = 'อัปโหลดเสร็จสมบูรณ์ ระบบกำลังเริ่มตรวจหาเซลล์';
+    status.textContent = L('อัปโหลดเสร็จสมบูรณ์ ระบบกำลังเริ่มตรวจหาเซลล์', 'Upload complete. Starting cell detection.');
     openSession(sid, { guide: true });
   } catch (e) {
     status.classList.add('err');
-    status.textContent = 'การอัปโหลดไม่สำเร็จ: ' + e.message;
+    status.textContent = L('การอัปโหลดไม่สำเร็จ: ', 'Upload failed: ') + e.message;
   } finally {
     $('uploadProgress').classList.remove('active');
   }
@@ -539,6 +602,7 @@ async function loadImages() {
   $('imgCount').textContent = `(${images.length})`;
   renderFiles();
   $('statChips').style.display = 'flex';  // counters only exist once images are open
+  ['statsBtn','exportBtn','newFolderBtn'].forEach(id => $(id).hidden = false);
   refreshChips();
   if (images.length) await select(0);
 }
@@ -554,10 +618,29 @@ async function boot() {
   // already uploaded (e.g. via the API), skipping the upload screen
   const sid = new URLSearchParams(location.search).get('session_id');
   if (sid) await openSession(sid);
+  openGuide();   // how-to pops up by itself every time the site opens
 }
+$('langSel').value = LANG;
+function setLang(l) {
+  LANG = l;
+  try { localStorage.setItem('bloodsmereLang', l); } catch (e) { /* storage blocked */ }
+  applyStatic();
+  if (images.length) { status(); renderFiles(false); updateUnsavedChip(); if (!bgBusy) updateProgress(); }
+  renderGuide();
+  if ($('statsModal').classList.contains('open')) openStats();
+}
+$('langSel').addEventListener('input', e => setLang(e.target.value));
+$('langSel').addEventListener('change', e => setLang(e.target.value));
 boot();
+applyStatic();
 
-const STATE_TXT = { pending:'รอตรวจหา', review:'รอการตรวจสอบ', unsaved:'มีการเปลี่ยนแปลงที่ยังไม่ได้บันทึก', done:'ตรวจสอบแล้ว' };
+
+const STATE_TXT = {
+  get pending() { return L('รอตรวจหา', 'Waiting for detection'); },
+  get review() { return L('รอการตรวจสอบ', 'Needs review'); },
+  get unsaved() { return L('มีการเปลี่ยนแปลงที่ยังไม่ได้บันทึก', 'Unsaved changes'); },
+  get done() { return L('ตรวจสอบแล้ว', 'Reviewed'); },
+};
 function stateOf(f, i) {
   if (i === index && dirty) return 'unsaved';
   if (!f.labeled) return 'pending';
@@ -593,7 +676,7 @@ function syncDirtyUI() {
   status();
 }
 
-function askDiscard() { return !dirty || confirm('มีการแก้ไขที่ยังไม่ได้บันทึก ท่านต้องการยกเลิกการแก้ไขหรือไม่'); }
+function askDiscard() { return !dirty || confirm(L('มีการแก้ไขที่ยังไม่ได้บันทึก ท่านต้องการยกเลิกการแก้ไขหรือไม่', 'You have unsaved edits. Discard them?')); }
 
 async function select(i) {
   index = i; selected = -1; dirty = false; unsavedEdits = 0;
@@ -647,16 +730,15 @@ async function detectRequest(name) {
 
 // keyboard shortcut D: re-detect only the image on screen
 async function detect() {
-  if (bgBusy) { flash('ระบบกำลังตรวจหาอัตโนมัติอยู่ โปรดรอให้เสร็จก่อน', true); return; }
   if (singleBusy || index < 0) return;
   singleBusy = true;
   setDetectingProgress(true);
   try {
     boxes = await detectRequest(images[index].name);
-    selected = boxes.length ? 0 : -1;
+    selected = -1;
     markEdit();
-    if (!boxes.length) flash('ไม่พบเซลล์ในภาพนี้', true);
-    else flash(`ตรวจพบเซลล์ ${boxes.length} เซลล์`);
+    if (!boxes.length) flash(L('ไม่พบเซลล์ในภาพนี้', 'No cells found in this image'), true);
+    else flash(L(`ตรวจพบเซลล์ ${boxes.length} เซลล์`, `Found ${boxes.length} cells`));
   } catch (e) {
     flash(e.message, true);
   } finally {
@@ -680,16 +762,20 @@ function setBar(pctVal, textStr, busyNow) {
 // that has no labels yet while the user keeps browsing and checking images
 async function detectAll() {
   if (bgBusy || !images.length) return;
-  const targets = images.map((f, i) => i).filter(i => !images[i].labeled);
-  if (!targets.length) { updateProgress(); return; }
+  const total = images.filter(f => !f.labeled).length;
+  if (!total) { updateProgress(); return; }
 
   bgBusy = true;
   let ok = 0, failed = 0, lastErr = '';
-  for (let k = 0; k < targets.length; k++) {
-    const i = targets[k];
-    if (images[i].labeled) continue;              // user saved it in the meantime
+  const skipped = new Set();
+  for (let k = 0; ; k++) {
+    // always do the image on screen first, then the others in order
+    let i = (index >= 0 && !images[index].labeled && !skipped.has(index)) ? index
+          : images.findIndex((f, j) => !f.labeled && !skipped.has(j));
+    if (i < 0) break;
+    const targets = { length: total };
     const p = Math.round(k / targets.length * 100);
-    setBar(p, `ระบบกำลังตรวจหาเซลล์อัตโนมัติ  ภาพที่ ${k + 1} จากทั้งหมด ${targets.length} ภาพ (${p}%)`, true);
+    setBar(p, L(`ระบบกำลังตรวจหาเซลล์อัตโนมัติ  ภาพที่ ${k + 1} จากทั้งหมด ${targets.length} ภาพ (${p}%)`, `Detecting cells automatically  image ${k + 1} of ${targets.length} (${p}%)`), true);
     try {
       const b = await detectRequest(images[i].name);
       if (images[i].labeled) continue;            // saved by the user while we were detecting
@@ -701,20 +787,21 @@ async function detectAll() {
       images[i].reviewed = false;                 // yellow: waiting for a person to check it
       ok++;
       if (i === index && !dirty) {                // image on screen: show its boxes right away
-        boxes = b; selected = boxes.length ? 0 : -1;
+        boxes = b; selected = -1;
         status(); draw();
       }
     } catch (e) {
+      skipped.add(i);
       failed++; lastErr = e.message;
     }
     renderFiles(false);
   }
 
   bgBusy = false;
-  const summary = `ตรวจหาเสร็จสิ้น: สำเร็จ ${ok} ภาพ${failed ? `  ไม่สำเร็จ ${failed} ภาพ` : ''}  กรุณาตรวจสอบภาพที่มีป้ายสีเหลืองและกดบันทึก`;
+  const summary = L(`ตรวจหาเสร็จสิ้น: สำเร็จ ${ok} ภาพ${failed ? `  ไม่สำเร็จ ${failed} ภาพ` : ''}  กรุณาตรวจสอบภาพที่มีป้ายสีเหลืองและกดบันทึก`, `Detection finished: ${ok} succeeded${failed ? `, ${failed} failed` : ''}. Please review the yellow-tagged images and save.`);
   setBar(100, summary, false);
   refreshChips();
-  flash(failed && !ok ? (lastErr || 'การตรวจหาไม่สำเร็จ') : summary, failed > 0 && ok === 0);
+  flash(failed && !ok ? (lastErr || L('การตรวจหาไม่สำเร็จ', 'Detection failed')) : summary, failed > 0 && ok === 0);
   syncDirtyUI(); draw();
   setTimeout(updateProgress, 6000);
 }
@@ -744,7 +831,7 @@ function status() {
   if (f) {
     const st = stateOf(f, index);
     const lead = (st === 'review' || st === 'unsaved') ? STATE_TXT[st] + '  ·  ' : '';
-    el.textContent = `${lead}ภาพที่ ${index + 1}/${images.length}  ${f.name}  ·  ${boxes.length} กรอบ`;
+    el.textContent = `${lead}${L('ภาพที่', 'Image')} ${index + 1}/${images.length}  ${f.name}  ·  ${boxes.length} ${L('กรอบ', 'boxes')}`;
     el.className = st === 'review' ? 'review' : st === 'unsaved' ? 'unsaved' : '';
   } else {
     el.textContent = '—';
@@ -752,7 +839,7 @@ function status() {
   }
   // the single class dropdown (top bar) follows the selected box
   if (selected >= 0 && boxes[selected]) $('clsSelect').value = boxes[selected].class_id >= 0 ? boxes[selected].class_id : 0;
-  $('clsLabel').textContent = selected >= 0 ? 'ชนิดเซลล์ของกรอบที่เลือก' : 'ชนิดเซลล์สำหรับกรอบใหม่';
+  $('clsLabel').textContent = selected >= 0 ? L('ชนิดเซลล์ของกรอบที่เลือก', 'Cell type of selected box') : L('ชนิดเซลล์สำหรับกรอบใหม่', 'Cell type for new boxes');
   $('clsGroup').classList.toggle('active', selected >= 0);
 }
 
@@ -778,15 +865,17 @@ function draw() {
     ctx.strokeStyle = sel ? '#f59e0b' : '#dc2626';
     ctx.strokeRect(x0, y0, x1 - x0, y1 - y0);
 
-    const clsName = CLASSES[b.class_id] ?? (b.class_name || 'Unknown');
-    const scoreTxt = b.cls_score ? ' ' + b.cls_score.toFixed(2) : '';
-    const label = `${clsName}${scoreTxt}`;
-    ctx.font = '700 20px "Sarabun","Noto Sans Thai",Tahoma,sans-serif';
-    const tw = ctx.measureText(label).width;
-    ctx.fillStyle = sel ? '#f59e0b' : '#dc2626';
-    ctx.fillRect(x0, y0 - 32, tw + 14, 32);
-    ctx.fillStyle = '#ffffff';
-    ctx.fillText(label, x0 + 7, y0 - 9);
+    if (!sel) {   // the clicked (selected) box shows no class name
+      const clsName = CLASSES[b.class_id] ?? (b.class_name || 'Unknown');
+      const scoreTxt = b.cls_score ? ' ' + b.cls_score.toFixed(2) : '';
+      const label = `${clsName}${scoreTxt}`;
+      ctx.font = '700 20px "Sarabun","Noto Sans Thai",Tahoma,sans-serif';
+      const tw = ctx.measureText(label).width;
+      ctx.fillStyle = sel ? '#f59e0b' : '#dc2626';
+      ctx.fillRect(x0, y0 - 32, tw + 14, 32);
+      ctx.fillStyle = '#ffffff';
+      ctx.fillText(label, x0 + 7, y0 - 9);
+    }
 
     if (sel) {
       ctx.fillStyle = '#f59e0b';
@@ -796,7 +885,7 @@ function draw() {
 
   if (draft) {
     const [x0, y0] = toS(draft.x0, draft.y0), [x1, y1] = toS(draft.x1, draft.y1);
-    ctx.strokeStyle = '#0f766e'; ctx.lineWidth = 4; ctx.setLineDash([6, 4]);
+    ctx.strokeStyle = '#0e6b63'; ctx.lineWidth = 4; ctx.setLineDash([6, 4]);
     ctx.strokeRect(x0, y0, x1 - x0, y1 - y0);
     ctx.setLineDash([]);
   }
@@ -885,6 +974,7 @@ window.addEventListener('mousemove', e => {
 });
 
 window.addEventListener('mouseup', () => {
+  if (!mode) return;   // not a canvas drag (e.g. click on the class dropdown): don't touch the UI
   if (mode === 'draw' && draft) {
     const x = Math.min(draft.x0, draft.x1), y = Math.min(draft.y0, draft.y1);
     const w = Math.abs(draft.x1 - draft.x0), h = Math.abs(draft.y1 - draft.y0);
@@ -940,12 +1030,12 @@ async function save() {
     method: 'POST', headers: {'Content-Type': 'application/json'},
     body: JSON.stringify({ session_id: SESSION_ID, name: images[index].name, boxes }),
   });
-  if (!res.ok) { flash('ไม่สามารถบันทึกข้อมูลได้', true); return false; }
+  if (!res.ok) { flash(L('ไม่สามารถบันทึกข้อมูลได้', 'Could not save'), true); return false; }
   dirty = false; unsavedEdits = 0;
   images[index].labeled = true;
   images[index].reviewed = true;
   renderFiles(false); updateUnsavedChip(); status(); refreshChips();
-  flash(`บันทึกข้อมูลเรียบร้อย (${boxes.length} กรอบ)`);
+  flash(L(`บันทึกข้อมูลเรียบร้อย (${boxes.length} กรอบ)`, `Saved (${boxes.length} boxes)`));
   return true;
 }
 
@@ -965,18 +1055,22 @@ $('saveBtn').onclick = save;
 $('saveNextBtn').onclick = async () => { if (await save()) go(1); };
 $('newFolderBtn').onclick = () => {
   if (singleBusy) return;
-  if (dirty && !confirm('มีการแก้ไขที่ยังไม่ได้บันทึก ท่านต้องการยกเลิกการแก้ไขและอัปโหลดภาพชุดใหม่หรือไม่')) return;
-  if (bgBusy && !confirm('ระบบกำลังตรวจหาเซลล์อยู่เบื้องหลัง ท่านต้องการหยุดและอัปโหลดภาพชุดใหม่หรือไม่')) return;
+  if (dirty && !confirm(L('มีการแก้ไขที่ยังไม่ได้บันทึก ท่านต้องการยกเลิกการแก้ไขและอัปโหลดภาพชุดใหม่หรือไม่', 'You have unsaved edits. Discard them and upload a new image set?'))) return;
   location.href = location.pathname;   // back to the upload screen
 };
 // the one class dropdown (top bar): changes the class of the selected box,
 // and is also the class given to the next box the user draws
-$('clsSelect').onchange = e => {
+function applyClassChange(e) {
   if (selected < 0 || !boxes[selected]) return;
-  boxes[selected].class_id = parseInt(e.target.value, 10);
-  boxes[selected].class_name = CLASSES[boxes[selected].class_id];
+  const cid = parseInt(e.target.value, 10);
+  if (boxes[selected].class_id === cid) return;
+  boxes[selected].class_id = cid;
+  boxes[selected].class_name = CLASSES[cid];
+  boxes[selected].cls_score = undefined;   // user-set class: drop the model's score
   markEdit(); draw(); syncDirtyUI();
-};
+}
+$('clsSelect').addEventListener('input', applyClassChange);
+$('clsSelect').addEventListener('change', applyClassChange);
 
 window.addEventListener('keydown', e => {
   if ($('guideModal').classList.contains('open')) {   // slideshow keys
@@ -986,7 +1080,7 @@ window.addEventListener('keydown', e => {
     return;
   }
   if (e.target.tagName === 'SELECT' || e.target.tagName === 'INPUT') return;
-  if ($('statsModal').classList.contains('open')) return;
+  if ($('statsModal').classList.contains('open')) { if (e.key === 'Escape') $('statsModal').classList.remove('open'); return; }
   if (!$('layout').classList.contains('active')) return;
   if (e.key === 's' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); save(); }
   else if (e.key === 'Enter') { e.preventDefault(); $('saveNextBtn').click(); }
@@ -1008,26 +1102,26 @@ window.addEventListener('keydown', e => {
 // -------------------------------------------------------- how-to slideshow --
 // Placeholder pictures for now: replace static/img/guide/stepN.svg with real screenshots.
 const GUIDE = [
-  { img:'/static/img/guide/step1.svg', title:'ขั้นตอนที่ 1  อัปโหลดภาพ',
-    text:'ลากภาพหรือโฟลเดอร์มาวางที่กรอบ หรือคลิกเพื่อเลือกโฟลเดอร์ ระบบรับทั้งไฟล์และโฟลเดอร์ให้โดยอัตโนมัติ' },
-  { img:'/static/img/guide/step2.svg', title:'ขั้นตอนที่ 2  ระบบตรวจหาเซลล์อัตโนมัติ',
-    text:'ระบบตรวจหาเม็ดเลือดขาวเบื้องหลัง ท่านคลิกดูภาพอื่นได้ระหว่างรอ และดูความคืบหน้าที่แถบด้านบน' },
-  { img:'/static/img/guide/step3.svg', title:'ขั้นตอนที่ 3  ตรวจสอบภาพที่มีป้ายสีเหลือง',
-    text:'ภาพที่ระบบตรวจเสร็จจะมีป้าย “รอการตรวจสอบ” คลิกที่กรอบ แล้วเลือกชนิดเซลล์ที่ถูกต้องจากแถบด้านบน' },
-  { img:'/static/img/guide/step4.svg', title:'ขั้นตอนที่ 4  แก้ไขกรอบเมื่อจำเป็น',
-    text:'ลากบนพื้นที่ว่างเพื่อสร้างกรอบใหม่ ลากภายในกรอบเพื่อย้าย ลากที่มุมเพื่อปรับขนาด หรือกด “ลบกรอบ”' },
-  { img:'/static/img/guide/step5.svg', title:'ขั้นตอนที่ 5  บันทึกผล',
-    text:'กด “บันทึกและไปภาพถัดไป” ภาพที่มีป้ายสีแดงคือมีการเปลี่ยนแปลงที่ยังไม่ได้บันทึก' },
+  { img:'/static/img/guide/step1.svg', th:['ขั้นตอนที่ 1  อัปโหลดภาพ','ลากภาพหรือโฟลเดอร์มาวางที่กรอบ หรือคลิกเพื่อเลือกโฟลเดอร์ ระบบรับทั้งไฟล์และโฟลเดอร์ให้โดยอัตโนมัติ'],
+    en:['Step 1  Upload images','Drag images or a folder onto the box, or click to choose. Both files and folders are accepted.'] },
+  { img:'/static/img/guide/step2.svg', th:['ขั้นตอนที่ 2  ระบบตรวจหาเซลล์อัตโนมัติ','ระบบตรวจหาเม็ดเลือดขาวเบื้องหลัง ท่านคลิกดูภาพอื่นได้ระหว่างรอ และดูความคืบหน้าที่แถบด้านบน'],
+    en:['Step 2  Automatic cell detection','The system detects white blood cells in the background. You can open other images while waiting and follow progress in the top bar.'] },
+  { img:'/static/img/guide/step3.svg', th:['ขั้นตอนที่ 3  ตรวจสอบภาพที่มีป้ายสีเหลือง','ภาพที่ระบบตรวจเสร็จจะมีป้าย “รอการตรวจสอบ” คลิกที่กรอบ แล้วเลือกชนิดเซลล์ที่ถูกต้องจากแถบด้านบน'],
+    en:['Step 3  Review yellow-tagged images','Images that finished detection are tagged “Needs review”. Click a box, then choose the correct cell type from the top bar.'] },
+  { img:'/static/img/guide/step4.svg', th:['ขั้นตอนที่ 4  แก้ไขกรอบเมื่อจำเป็น','ลากบนพื้นที่ว่างเพื่อสร้างกรอบใหม่ ลากภายในกรอบเพื่อย้าย ลากที่มุมเพื่อปรับขนาด หรือกด “ลบกรอบ”'],
+    en:['Step 4  Adjust boxes when needed','Drag on empty space to create a box, drag inside a box to move it, drag a corner to resize, or press “Delete box”.'] },
+  { img:'/static/img/guide/step5.svg', th:['ขั้นตอนที่ 5  บันทึกผล','กด “บันทึกและไปภาพถัดไป” ภาพที่มีป้ายสีแดงคือมีการเปลี่ยนแปลงที่ยังไม่ได้บันทึก'],
+    en:['Step 5  Save','Press “Save and go to next image”. Images with a red tag have unsaved changes.'] },
 ];
 let guideIdx = 0;
 const GUIDE_SKIP_KEY = 'hemascanGuideSkip';
 
 function renderGuide() {
-  const g = GUIDE[guideIdx];
+  const g = GUIDE[guideIdx], tx = LANG === 'en' ? g.en : g.th;
   $('guideImg').src = g.img;
-  $('guideImg').alt = g.title;
-  $('guideStepTitle').textContent = g.title;
-  $('guideStepText').textContent = g.text;
+  $('guideImg').alt = tx[0];
+  $('guideStepTitle').textContent = tx[0];
+  $('guideStepText').textContent = tx[1];
   $('guideCount').textContent = `${guideIdx + 1} / ${GUIDE.length}`;
   $('guidePrev').disabled = guideIdx === 0;
   $('guideNext').disabled = guideIdx === GUIDE.length - 1;
@@ -1041,18 +1135,14 @@ function guideGo(d) {
 function openGuide() {
   guideIdx = 0; renderGuide();
   $('guideBg').style.display = bgBusy ? '' : 'none';
-  try { $('guideSkip').checked = localStorage.getItem(GUIDE_SKIP_KEY) === '1'; } catch (e) { /* storage blocked */ }
   $('guideModal').classList.add('open');
   $('guideDone').focus();
 }
 function closeGuide() {
-  try { localStorage.setItem(GUIDE_SKIP_KEY, $('guideSkip').checked ? '1' : '0'); } catch (e) { /* storage blocked */ }
   $('guideModal').classList.remove('open');
 }
 function showGuideAuto() {
-  let skip = false;
-  try { skip = localStorage.getItem(GUIDE_SKIP_KEY) === '1'; } catch (e) { /* storage blocked */ }
-  if (!skip) openGuide();
+  openGuide();
 }
 $('guideBtn').onclick = openGuide;
 $('guideClose').onclick = closeGuide;
@@ -1065,11 +1155,32 @@ $('guideDots').addEventListener('click', e => {
 });
 $('guideModal').addEventListener('mousedown', e => { if (e.target === $('guideModal')) closeGuide(); });
 
-$('helpToggle').onclick = () => {
-  const h = $('help'), hide = h.style.display !== 'none';
-  h.style.display = hide ? 'none' : '';
-  $('helpToggle').textContent = hide ? 'แสดงคำแนะนำ' : 'ซ่อนคำแนะนำ';
-};
+
+// ------------------------------------------------------- leave / save-as --
+function hasWork() { return !!SESSION_ID && $('layout').classList.contains('active') && dirty; }
+window.addEventListener('beforeunload', e => { if (hasWork()) { e.preventDefault(); e.returnValue = ''; } });
+
+// results are always auto-saved on the server; this copies them to a place the user picks
+async function exportLabels() {
+  if (dirty && !(await save())) return;
+  if (window.showDirectoryPicker) {
+    let dir;
+    try { dir = await window.showDirectoryPicker({ mode: 'readwrite' }); }
+    catch (e) { return; }                  // user cancelled the browse window
+    let n = 0;
+    for (const f of images.filter(f => f.labeled)) {
+      const lab = await (await fetch(`/api/label?session_id=${encodeURIComponent(SESSION_ID)}&name=${encodeURIComponent(f.name)}`)).json();
+      const txt = lab.boxes.map(b => `${b.class_id} ${b.cx.toFixed(6)} ${b.cy.toFixed(6)} ${b.w.toFixed(6)} ${b.h.toFixed(6)}`).join('\n');
+      const fh = await dir.getFileHandle(f.name.replace(/\.[^.]+$/, '') + '.txt', { create: true });
+      const w = await fh.createWritable(); await w.write(txt ? txt + '\n' : ''); await w.close();
+      n++;
+    }
+    flash(L(`บันทึกไฟล์ผลลัพธ์ ${n} ไฟล์เรียบร้อย`, `Downloaded ${n} result files`));
+  } else {
+    location.href = '/api/export.zip?session_id=' + encodeURIComponent(SESSION_ID);   // browser's own save dialog
+  }
+}
+$('exportBtn').onclick = () => exportLabels().catch(e => flash(L('บันทึกไม่สำเร็จ: ', 'Save failed: ') + e.message, true));
 </script>
 </body>
 </html>

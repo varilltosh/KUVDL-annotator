@@ -559,6 +559,21 @@ def api_put_label():
     return jsonify({"ok": True, "num_boxes": n})
 
 
+@app.route("/api/export.zip")
+def api_export_zip():
+    """All saved labels of a session as a zip (fallback when the browser has no folder picker)."""
+    import io, zipfile
+    sid = safe_session(request.args.get("session_id", ""))
+    if not sid:
+        return jsonify({"error": "not found"}), 404
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+        for f in sorted((LABEL_ROOT / sid).glob("*.txt")):
+            z.write(f, f.name)
+    buf.seek(0)
+    return send_file(buf, mimetype="application/zip", as_attachment=True, download_name="labels.zip")
+
+
 @app.route("/api/stats")
 def api_stats():
     sids = stats_sessions(request.args.get("session_id", ""))
