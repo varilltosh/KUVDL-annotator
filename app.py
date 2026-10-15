@@ -510,7 +510,12 @@ def api_images():
     names = sorted(p.name for p in session_dir(sid).iterdir()
                    if p.is_file() and p.suffix.lower() in IMAGE_EXTENSIONS)
     labeled_stems = {p.stem for p in (LABEL_ROOT / sid).glob("*.txt")} if (LABEL_ROOT / sid).is_dir() else set()
-    return jsonify([{"name": n, "labeled": Path(n).stem in labeled_stems} for n in names])
+    # "reviewed" = a human saved this image; labeled-but-not-reviewed means the
+    # label is still raw model output waiting for a person to check it
+    return jsonify([{"name": n,
+                     "labeled": Path(n).stem in labeled_stems,
+                     "reviewed": bool(read_meta(sid, n).get("reviewed", False))}
+                    for n in names])
 
 
 @app.route("/img/<sid>/<path:name>")

@@ -1,4 +1,4 @@
-# WBC Detector labeling website — Ubuntu 24.04 + CUDA
+# WBC Annotator labeling website — Ubuntu 24.04 + CUDA
 FROM nvidia/cuda:12.6.3-cudnn-devel-ubuntu24.04
 
 ENV DEBIAN_FRONTEND=noninteractive \

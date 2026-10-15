@@ -1,185 +1,267 @@
 <!doctype html>
-<html>
+<html lang="th">
 <head>
 <meta charset="utf-8">
-<title>WBC Detector</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HemaScan – ระบบตรวจและจำแนกเม็ดเลือดขาวอัตโนมัติ</title>
 <style>
+  /* Professional, calm palette with large type and generous targets for older users:
+     20px base text, every control >= 56px tall, strong contrast, visible focus rings. */
   :root {
-    --bg:#f5f6f8; --panel:#ffffff; --line:#e3e6eb; --fg:#1a1d23; --muted:#6b7280;
-    --accent:#2563eb; --accent-fg:#ffffff; --accent-light:#eaf1ff;
-    --ok:#16a34a; --danger:#dc2626; --warn:#f59e0b;
+    --bg:#eef1f5; --panel:#ffffff; --line:#cfd6e0; --fg:#111827; --muted:#475467;
+    --navy:#12355b; --navy-d:#0c2543; --teal:#0f766e; --teal-light:#d8efec;
+    --accent:#12355b; --accent-light:#dbe7f5;
+    --ok:#15803d; --danger:#b42318; --warn:#b45309;
   }
   * { box-sizing:border-box; }
-  html, body { margin:0; height:100%; background:var(--bg); color:var(--fg);
-               font-family:system-ui,-apple-system,"Segoe UI",sans-serif; overflow:hidden;
-               font-size:16px; }
-
-  /* ---------------- brand header (always visible, top-left logo) ---------------- */
-  #brandBar { height:56px; flex-shrink:0; background:var(--panel); border-bottom:1px solid var(--line);
-              display:flex; align-items:center; gap:12px; padding:0 20px; }
-  #brandBar img { height:36px; width:36px; object-fit:contain; }
-  #brandBar .title { font-size:18px; font-weight:700; }
-  #brandBar .sub { font-size:12px; color:var(--muted); font-weight:500; }
-  #statChips { margin-left:auto; display:none; gap:8px; align-items:center; }
-  .chip { background:var(--bg); border:1px solid var(--line); border-radius:8px; padding:4px 12px; text-align:center; line-height:1.2; }
-  .chip b { display:block; font-size:17px; font-variant-numeric:tabular-nums; }
-  .chip span { font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; }
-  #statsModal { display:none; position:fixed; inset:0; z-index:50; background:rgba(0,0,0,.4);
-                align-items:center; justify-content:center; }
-  #statsModal.open { display:flex; }
-  #statsBox { background:var(--panel); border-radius:14px; padding:22px 26px; width:760px; max-width:94vw;
-              max-height:90vh; overflow:auto; box-shadow:0 12px 40px rgba(0,0,0,.25); }
-  #statsBox h3 { margin:0 0 4px; font-size:20px; }
-  #statsBox h4 { margin:20px 0 8px; font-size:14px; text-transform:uppercase; letter-spacing:.05em; color:var(--muted); }
-  #statsBox table { border-collapse:collapse; width:100%; font-size:14px; font-variant-numeric:tabular-nums; }
-  #statsBox th, #statsBox td { padding:6px 10px; border-bottom:1px solid var(--line); text-align:right; }
-  #statsBox th:first-child, #statsBox td:first-child { text-align:left; }
-  #statsBox th { color:var(--muted); font-weight:600; font-size:12px; }
-  #statsBox td.diag { background:var(--accent-light); font-weight:700; }
-  #statsBox .kpis { display:flex; gap:10px; flex-wrap:wrap; margin:12px 0; }
-  #statsBox .note { font-size:12.5px; color:var(--muted); margin:6px 0 0; }
+  html, body { margin:0; height:100%; background:var(--bg); color:var(--fg); overflow:hidden;
+               font-family:"Sarabun","Noto Sans Thai","Noto Sans Thai Looped","Tahoma","Leelawadee UI",system-ui,sans-serif;
+               font-size:20px; line-height:1.5; }
+  :focus-visible { outline:4px solid #f59e0b; outline-offset:2px; }
   #page { height:100vh; display:flex; flex-direction:column; }
 
-  /* ---------------- upload screen ---------------- */
-  #uploadScreen { flex:1; display:flex; align-items:center; justify-content:center; flex-direction:column; gap:20px; background:var(--bg); }
-  #uploadScreen h1 { font-size:32px; margin:0; font-weight:700; }
-  #uploadScreen p { color:var(--muted); font-size:17px; margin:0; max-width:480px; text-align:center; line-height:1.5; }
-  #dropZone { width:480px; max-width:90vw; padding:56px 24px; border:3px dashed #c7cdd6; border-radius:16px;
-              text-align:center; cursor:pointer; background:var(--panel);
-              box-shadow:0 1px 3px rgba(0,0,0,.05); transition:.15s; }
-  #dropZone:hover { border-color:var(--accent); background:var(--accent-light); }
-  #dropZone.drag { border-color:var(--accent); background:var(--accent-light); }
-  #dropZone .big { font-size:20px; font-weight:600; }
-  #dropZone .small { font-size:14px; color:var(--muted); margin-top:8px; }
-  #uploadStatus { font-size:15px; color:var(--muted); min-height:20px; }
-  #uploadProgress { display:none; width:480px; max-width:90vw; }
-  #uploadProgress.active { display:block; }
-  #uploadProgressTrack { height:10px; border-radius:6px; background:#e3e6eb; overflow:hidden; }
-  #uploadProgressFill { height:100%; width:0%; background:var(--accent); transition:width .15s ease; }
+  /* ---------------- header ---------------- */
+  #brandBar { flex-shrink:0; background:var(--navy); color:#fff; display:flex; align-items:center; gap:18px;
+              padding:10px 28px; flex-wrap:wrap; border-bottom:5px solid var(--teal); }
+  #brandBar .logoWrap { background:#fff; border-radius:12px; width:60px; height:60px; display:flex;
+                        align-items:center; justify-content:center; flex-shrink:0; }
+  #brandBar img { height:46px; width:46px; object-fit:contain; }
+  #brandBar .name { font-size:30px; font-weight:800; letter-spacing:.02em; line-height:1.15; }
+  #brandBar .name span { color:#7ee0d4; }
+  #brandBar .sub { font-size:17px; color:#d3deec; font-weight:500; }
+  #headerRight { margin-left:auto; display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
+  #statChips { display:none; gap:12px; align-items:center; flex-wrap:wrap; }
+  .chip.alert { background:#b42318; border-color:#fff; }
+  .chip.alert span { color:#fff; }
+  .chip { background:rgba(255,255,255,.12); border:2px solid rgba(255,255,255,.28); border-radius:12px;
+          padding:2px 16px; text-align:center; line-height:1.25; }
+  .chip b { display:block; font-size:24px; font-variant-numeric:tabular-nums; }
+  .chip span { font-size:15px; color:#d3deec; }
+  #brandBar button { background:#fff; color:var(--navy); border-color:#fff; }
+  #brandBar button:hover { background:#e6edf6; }
 
-  /* ---------------- main app ---------------- */
+  /* ---------------- stats modal ---------------- */
+  #statsModal { display:none; position:fixed; inset:0; z-index:50; background:rgba(10,20,35,.6);
+                align-items:center; justify-content:center; }
+  #statsModal.open { display:flex; }
+  #statsBox { background:var(--panel); border-radius:16px; padding:26px 30px; width:1100px; max-width:96vw;
+              max-height:92vh; overflow:auto; box-shadow:0 16px 48px rgba(0,0,0,.35); color:var(--fg); }
+  #statsBox h3 { margin:0 0 4px; font-size:28px; color:var(--navy); }
+  #statsBox h4 { margin:26px 0 10px; font-size:21px; color:var(--teal); border-bottom:3px solid var(--line); padding-bottom:4px; }
+  #statsBox table { border-collapse:collapse; width:100%; font-size:18px; font-variant-numeric:tabular-nums; }
+  #statsBox th, #statsBox td { padding:10px 12px; border-bottom:2px solid var(--line); text-align:right; }
+  #statsBox th:first-child, #statsBox td:first-child { text-align:left; }
+  #statsBox th { color:var(--fg); font-weight:700; font-size:17px; background:#eef1f5; }
+  #statsBox td.diag { background:var(--teal-light); font-weight:700; }
+  #statsBox .kpis { display:flex; gap:12px; flex-wrap:wrap; margin:14px 0; }
+  #statsBox .chip { background:var(--bg); border-color:var(--line); }
+  #statsBox .chip span { color:var(--muted); }
+  #statsBox .note { font-size:17px; color:var(--muted); margin:10px 0 0; }
+  #statsBox label { font-size:19px; margin-right:10px; }
+  #statsBox input[type=checkbox] { width:26px; height:26px; vertical-align:middle; margin-right:6px; }
+  #statsBox button { background:#fff; color:var(--fg); }
+
+  /* ---------------- buttons ---------------- */
+  button { background:#fff; color:var(--fg); border:3px solid #667085; border-radius:12px;
+           min-height:56px; padding:8px 20px; cursor:pointer; font-size:20px; font-weight:700;
+           font-family:inherit; line-height:1.3; }
+  button:hover { background:#e9edf3; border-color:#1d2939; }
+  button.primary { background:var(--navy); border-color:var(--navy); color:#fff; }
+  button.primary:hover { background:var(--navy-d); border-color:var(--navy-d); }
+  button.success { background:var(--teal); border-color:var(--teal); color:#fff; }
+  button.success:hover { background:#0b5a54; border-color:#0b5a54; }
+  button.danger { color:var(--danger); border-color:var(--danger); }
+  button.danger:hover { background:#fdecea; }
+  button.toggle.active { background:var(--navy); border-color:var(--navy); color:#fff; }
+  button:disabled { opacity:.45; cursor:default; }
+  select { background:#fff; color:var(--fg); border:3px solid var(--navy); border-radius:12px; min-height:56px;
+           padding:8px 14px; font-size:20px; font-weight:700; min-width:300px; font-family:inherit; }
+
+  /* ---------------- upload screen ---------------- */
+  #uploadScreen { flex:1; display:flex; align-items:center; justify-content:center; flex-direction:column;
+                  gap:22px; padding:24px; overflow:auto; }
+  #uploadScreen h1 { font-size:38px; margin:0; font-weight:800; color:var(--navy); text-align:center; line-height:1.3; }
+  #uploadScreen p.lead { color:var(--muted); font-size:22px; margin:0; max-width:820px; text-align:center; line-height:1.6; }
+  #steps { display:flex; gap:14px; flex-wrap:wrap; justify-content:center; }
+  .step { display:flex; align-items:center; gap:10px; background:var(--panel); border:2px solid var(--line);
+          border-radius:14px; padding:10px 18px; font-size:19px; font-weight:600; }
+  .step i { font-style:normal; width:36px; height:36px; border-radius:50%; background:var(--teal); color:#fff;
+            display:flex; align-items:center; justify-content:center; font-weight:800; flex-shrink:0; }
+  #dropZone { width:820px; max-width:94vw; padding:56px 24px; border:5px dashed #8795a8; border-radius:22px;
+              text-align:center; cursor:pointer; background:var(--panel); transition:.15s;
+              box-shadow:0 4px 16px rgba(18,53,91,.08); }
+  #dropZone:hover, #dropZone.drag { border-color:var(--teal); background:var(--teal-light); }
+  #dropZone .icon { font-size:64px; line-height:1; }
+  #dropZone .big { font-size:30px; font-weight:800; line-height:1.4; margin-top:8px; color:var(--navy); }
+  #dropZone .small { font-size:19px; color:var(--muted); margin-top:10px; }
+  #uploadStatus { font-size:22px; min-height:34px; text-align:center; font-weight:600; }
+  #uploadStatus.err { color:var(--danger); }
+  #uploadProgress { display:none; width:820px; max-width:94vw; }
+  #uploadProgress.active { display:block; }
+  #uploadProgressTrack { height:24px; border-radius:12px; background:#d5dbe4; overflow:hidden; }
+  #uploadProgressFill { height:100%; width:0%; background:var(--teal); transition:width .15s ease; }
+
+  /* ---------------- workspace ---------------- */
   #layout { display:none; flex:1; flex-direction:column; min-height:0; }
   #layout.active { display:flex; }
 
-  #toolbar { padding:12px 20px; background:var(--panel); border-bottom:1px solid var(--line);
-             display:flex; align-items:center; gap:10px; font-size:15px; flex-wrap:wrap; }
-  button { background:#fff; color:var(--fg); border:1.5px solid #d5d9e0; border-radius:8px;
-           padding:9px 16px; cursor:pointer; font-size:15px; font-weight:500; }
-  button:hover { background:#f0f2f5; border-color:#b8bfca; }
-  button.primary { background:var(--accent); border-color:var(--accent); color:var(--accent-fg); }
-  button.primary:hover { background:#1d4ed8; border-color:#1d4ed8; }
-  button.danger { color:var(--danger); border-color:#f3c9c9; }
-  button.danger:hover { background:#fdecec; }
-  button.toggle.active { background:var(--accent); border-color:var(--accent); color:var(--accent-fg); }
-  button:disabled { opacity:.4; cursor:default; }
-  button .icon { font-size:16px; margin-right:2px; }
-  select { background:#fff; color:var(--fg); border:1.5px solid #d5d9e0; border-radius:8px;
-           padding:9px 14px; font-size:15px; font-weight:500; max-width:240px; }
-  #status { color:var(--muted); font-size:14px; font-variant-numeric:tabular-nums; }
+  #toolbar { padding:10px 20px; background:var(--panel); border-bottom:2px solid var(--line);
+             display:flex; align-items:center; gap:10px 14px; flex-wrap:wrap; }
+  .group { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+  #clsGroup { background:var(--bg); border:3px solid var(--line); border-radius:14px; padding:6px 10px; }
+  #clsGroup.active { border-color:var(--teal); background:var(--teal-light); }
+  #clsLabel { font-weight:700; font-size:19px; }
   .spacer { flex:1; }
 
   #body { flex:1; display:flex; min-height:0; }
-  #sidebar { width:260px; flex-shrink:0; background:var(--panel); border-right:1px solid var(--line);
+  #sidebar { width:350px; flex-shrink:0; background:var(--panel); border-right:2px solid var(--line);
              display:flex; flex-direction:column; }
-  #sidebar h2 { font-size:13px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted);
-                margin:0; padding:14px 16px 8px; display:flex; justify-content:space-between; font-weight:700; }
-  #sidebar h2 a { color:var(--accent); text-decoration:none; cursor:pointer; text-transform:none; letter-spacing:0; font-weight:600; }
+  #sidebar h2 { font-size:21px; margin:0; padding:14px 18px 10px; display:flex; justify-content:space-between;
+                font-weight:800; color:var(--navy); border-bottom:2px solid var(--line); }
   #files { overflow-y:auto; flex:1; }
-  .file-item { padding:10px 16px; cursor:pointer; font-size:14.5px; display:flex; justify-content:space-between;
-               gap:8px; border-left:4px solid transparent; }
-  .file-item:hover { background:#f4f6f9; }
-  .file-item.active { background:var(--accent-light); border-left-color:var(--accent); font-weight:600; }
-  .file-item .nm { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  .dot { width:9px; height:9px; border-radius:50%; background:#d5d9e0; flex-shrink:0; align-self:center; }
-  .dot.done { background:var(--ok); }
+  .file-item { padding:10px 16px; cursor:pointer; font-size:19px; display:flex; flex-direction:column;
+               align-items:flex-start; gap:4px; border-left:8px solid transparent;
+               border-bottom:1px solid var(--line); min-height:64px; justify-content:center; }
+  .file-item:hover { background:#f1f4f8; }
+  .file-item.active { background:var(--accent-light); border-left-color:var(--navy); font-weight:700; }
+  .file-item .nm { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:100%; font-weight:700; }
+  .tag { font-size:16px; font-weight:700; border-radius:20px; padding:0 12px; border:2px solid #98a2b3; color:var(--muted); line-height:1.5; }
+  .tag.done { background:var(--ok); border-color:var(--ok); color:#fff; }
+  .tag.review { background:#fde047; border-color:#ca8a04; color:#422006; }
+  .tag.unsaved { background:var(--danger); border-color:var(--danger); color:#fff; }
+  .file-item.unsaved { background:#fdecea; }
 
   #main { flex:1; display:flex; flex-direction:column; min-width:0; }
 
-  /* ---------------- adaptive progress bar (top of the image) ---------------- */
-  #progressBar { height:34px; flex-shrink:0; position:relative; overflow:hidden;
-                 background:#eef1f5; border-bottom:1px solid var(--line); }
-  #progressFill { position:absolute; top:0; bottom:0; left:0; width:0%; background:var(--accent);
-                  transition:width .25s ease; }
-  #progressFill.busy { background:linear-gradient(90deg, transparent, var(--accent) 40%, var(--accent) 60%, transparent);
-                        width:40% !important; animation:indet 1.1s infinite linear; transition:none; }
-  @keyframes indet { 0% { left:-40%; } 100% { left:100%; } }
+  /* progress bar: image position normally, live detection progress while the system works */
+  #progressBar { height:56px; flex-shrink:0; position:relative; overflow:hidden;
+                 background:#dfe5ed; border-bottom:2px solid var(--line); }
+  #progressFill { position:absolute; top:0; bottom:0; left:0; width:0%; background:#8fd3cb; transition:width .25s ease; }
+  #progressFill.busy { background:#7ec3ff; }
   #progressText { position:relative; z-index:1; height:100%; display:flex; align-items:center; justify-content:center;
-                  font-size:13px; font-weight:700; letter-spacing:.02em; color:var(--fg); }
+                  font-size:21px; font-weight:700; padding:0 12px; text-align:center; }
 
-  #canvasWrap { flex:1; position:relative; overflow:hidden; background:#e9ebef; }
+  #canvasWrap { flex:1; position:relative; overflow:hidden; background:#c9d0da; }
   canvas { position:absolute; top:0; left:0; cursor:crosshair; }
   canvas.pan-tool { cursor:grab; }
   canvas.panning { cursor:grabbing; }
-  #help { position:absolute; bottom:14px; left:14px; font-size:13px; color:#e9ebef;
-          background:rgba(26,29,35,.82); padding:10px 14px; border-radius:8px; line-height:1.7; }
-  #flash { position:absolute; top:14px; right:14px; background:var(--ok); color:#fff; padding:10px 16px;
-           border-radius:8px; font-size:15px; font-weight:600; opacity:0; transition:opacity .3s; pointer-events:none;
-           box-shadow:0 2px 8px rgba(0,0,0,.15); }
+  #status { position:absolute; top:14px; left:14px; background:rgba(17,24,39,.88); color:#fff; font-size:19px;
+            font-weight:700; padding:8px 18px; border-radius:30px; max-width:62%; white-space:nowrap;
+            overflow:hidden; text-overflow:ellipsis; }
+  #status.review { background:#fde047; color:#422006; border:2px solid #ca8a04; }
+  #status.unsaved { background:var(--danger); color:#fff; }
+  #viewTools { position:absolute; top:14px; right:14px; display:flex; flex-direction:column; gap:10px; }
+  #viewTools button { box-shadow:0 3px 10px rgba(0,0,0,.25); }
+  #help { position:absolute; bottom:14px; left:14px; font-size:18px; color:#fff; max-width:min(780px, 72%);
+          background:rgba(17,24,39,.92); padding:12px 18px; border-radius:12px; line-height:1.7; }
+  #helpToggle { position:absolute; bottom:14px; right:14px; min-height:48px; padding:6px 16px; font-size:18px; }
+  #flash { position:absolute; top:14px; left:50%; transform:translateX(-50%); background:var(--ok); color:#fff;
+           padding:14px 26px; border-radius:12px; font-size:24px; font-weight:700; opacity:0; transition:opacity .3s;
+           pointer-events:none; box-shadow:0 4px 14px rgba(0,0,0,.3); z-index:10; max-width:90%; text-align:center; }
   #flash.err { background:var(--danger); }
 
-  #advPanel { display:none; position:absolute; top:14px; right:14px; background:var(--panel);
-              border:1px solid var(--line); border-radius:12px; padding:16px 18px; font-size:14px; width:250px;
-              box-shadow:0 4px 16px rgba(0,0,0,.1); }
-  #advPanel.open { display:block; }
-  #advPanel label { display:flex; justify-content:space-between; gap:8px; margin-bottom:12px; color:var(--fg); font-weight:500; }
-  #advPanel input[type=range] { width:130px; }
-
-  /* custom dropdown (plain DOM, not a native <select>) so clicks are 100%
-     reliable over the canvas - no OS-popup hit-testing quirks to fight */
-  #boxClassPicker { display:none; position:absolute; z-index:6; }
-  #boxClassPickerBtn { font-size:14px; font-weight:700; padding:7px 10px; border-radius:8px;
-                        border:2px solid var(--warn); background:#fff; color:var(--fg);
-                        box-shadow:0 4px 14px rgba(0,0,0,.2); cursor:pointer; white-space:nowrap; }
-  #boxClassPickerBtn:hover { border-color:var(--accent); }
-  #boxClassPickerList { display:none; position:absolute; top:100%; left:0; margin-top:4px;
-                         background:#fff; border:1px solid var(--line); border-radius:8px;
-                         box-shadow:0 8px 24px rgba(0,0,0,.18); max-height:260px; overflow-y:auto; min-width:190px; }
-  #boxClassPickerList.open { display:block; }
-  #boxClassPickerList .opt { padding:9px 14px; font-size:14px; font-weight:500; cursor:pointer; white-space:nowrap; }
-  #boxClassPickerList .opt:hover { background:var(--accent-light); }
-  #boxClassPickerList .opt.sel { background:var(--accent); color:#fff; font-weight:700; }
+  /* ---------------- how-to slideshow popup ---------------- */
+  #guideModal { display:none; position:fixed; inset:0; z-index:60; background:rgba(10,20,35,.72);
+                align-items:center; justify-content:center; padding:14px; }
+  #guideModal.open { display:flex; }
+  #guideBox { background:var(--panel); border-radius:18px; width:1020px; max-width:97vw; max-height:96vh;
+              display:flex; flex-direction:column; overflow:hidden; box-shadow:0 20px 60px rgba(0,0,0,.45); }
+  .guideHead { display:flex; justify-content:space-between; align-items:center; gap:12px; padding:12px 22px;
+               background:var(--navy); color:#fff; }
+  .guideHead h3 { margin:0; font-size:26px; }
+  #guideStage { display:flex; align-items:center; gap:12px; padding:14px 14px 6px; min-height:0; overflow:auto; }
+  #guideStage figure { margin:0; flex:1; min-width:0; text-align:center; }
+  #guideImg { width:100%; max-height:46vh; object-fit:contain; border-radius:12px; border:2px solid var(--line); background:#eef1f5; }
+  #guideStage figcaption b { display:block; font-size:26px; color:var(--navy); margin-top:10px; }
+  #guideStage figcaption span { display:block; font-size:21px; color:var(--muted); }
+  .navArrow { width:72px; height:72px; border-radius:50%; font-size:30px; padding:0; flex-shrink:0; }
+  #guideDots { display:flex; justify-content:center; gap:10px; padding:8px 0; }
+  #guideDots span { width:16px; height:16px; border-radius:50%; background:#c3cad5; cursor:pointer; }
+  #guideDots span.on { background:var(--teal); transform:scale(1.25); }
+  #guideBg { margin:4px 22px 0; padding:8px 14px; background:var(--accent-light); border-radius:12px; font-size:19px; font-weight:600; }
+  #guideBgTrack { height:12px; border-radius:6px; background:#c7d4e6; margin-top:6px; overflow:hidden; }
+  #guideBgFill { height:100%; width:0%; background:var(--teal); transition:width .25s ease; }
+  .guideFoot { display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; padding:12px 22px 16px; }
+  .guideFoot label { font-size:19px; }
+  .guideFoot input[type=checkbox] { width:26px; height:26px; vertical-align:middle; margin-right:8px; }
 </style>
 </head>
 <body>
 
 <div id="page">
-  <div id="brandBar">
-    <img src="/static/img/ku_logo.png" alt="Kasetsart University logo">
+  <header id="brandBar">
+    <div class="logoWrap"><img src="/static/img/ku_logo.png" alt="โลโก้มหาวิทยาลัยเกษตรศาสตร์"></div>
     <div>
-      <div class="title">WBC Detector</div>
-      <div class="sub">Kasetsart University</div>
+      <div class="name">Hema<span>Scan</span></div>
+      <div class="sub">ระบบตรวจและจำแนกเม็ดเลือดขาวอัตโนมัติ &middot; มหาวิทยาลัยเกษตรศาสตร์</div>
     </div>
-    <div id="statChips">
-      <div class="chip"><b id="chAnnotated">–</b><span>Annotated</span></div>
-      <div class="chip"><b id="chEdits">–</b><span>Edits</span></div>
-      <div class="chip"><b id="chAcc">–</b><span>Model acc.</span></div>
-      <button id="statsBtn" type="button">Accuracy table</button>
+    <div id="headerRight">
+      <div id="statChips">
+        <div class="chip"><b id="chAnnotated">–</b><span>ภาพที่ดำเนินการแล้ว</span></div>
+        <div class="chip"><b id="chEdits">–</b><span>จำนวนการแก้ไข</span></div>
+        <div class="chip"><b id="chAcc">–</b><span>ความแม่นยำของระบบ</span></div>
+        <div class="chip" id="chUnsavedWrap"><b id="chUnsaved">0</b><span>การแก้ไขที่ยังไม่ได้บันทึก</span></div>
+        <button id="statsBtn" type="button">แสดงตารางความแม่นยำ</button>
+        <button id="newFolderBtn" type="button" title="กลับไปหน้าอัปโหลดภาพชุดใหม่">อัปโหลดภาพชุดใหม่</button>
+      </div>
+      <button id="guideBtn" type="button" title="ดูขั้นตอนการใช้งานระบบ">&#10067; วิธีใช้งาน</button>
     </div>
-  </div>
+  </header>
 
   <div id="statsModal">
     <div id="statsBox">
-      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
-        <h3>Model accuracy &amp; annotation stats</h3>
-        <div>
-          <label style="font-size:14px"><input type="checkbox" id="statsAll"> all folders</label>
-          <a id="statsCsv" href="#"><button type="button">Download CSV</button></a>
-          <button id="statsClose" type="button">Close</button>
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
+        <h3>ความแม่นยำของระบบและสถิติการดำเนินงาน</h3>
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          <label><input type="checkbox" id="statsAll"> ทุกชุดภาพ</label>
+          <a id="statsCsv" href="#"><button type="button">ดาวน์โหลดไฟล์ CSV</button></a>
+          <button id="statsClose" type="button">ปิด</button>
         </div>
       </div>
       <div id="statsBody"></div>
     </div>
   </div>
 
-  <div id="uploadScreen">
-    <h1>WBC Detector</h1>
-    <p>Attach a folder of blood-smear images. Each image is shown one at a time so you can auto-detect white blood cells, review the boxes, and fix the class label.</p>
-    <div id="dropZone">
-      <div class="big">Click to choose a folder, or drag one here</div>
-      <div class="small">.jpg &nbsp;.jpeg &nbsp;.png &nbsp;.bmp &nbsp;.tif &nbsp;.tiff</div>
+  <div id="guideModal" role="dialog" aria-modal="true" aria-labelledby="guideTitle">
+    <div id="guideBox">
+      <div class="guideHead">
+        <h3 id="guideTitle">วิธีใช้งานระบบ HemaScan</h3>
+        <button id="guideClose" type="button" aria-label="ปิดหน้าต่างวิธีใช้งาน">&#10005; ปิด</button>
+      </div>
+      <div id="guideStage">
+        <button id="guidePrev" class="navArrow" type="button" aria-label="ขั้นตอนก่อนหน้า">&#10094;</button>
+        <figure>
+          <img id="guideImg" alt="">
+          <figcaption><b id="guideStepTitle"></b><span id="guideStepText"></span></figcaption>
+        </figure>
+        <button id="guideNext" class="navArrow" type="button" aria-label="ขั้นตอนถัดไป">&#10095;</button>
+      </div>
+      <div id="guideDots"></div>
+      <div id="guideBg">
+        <span id="guideBgText">ระบบกำลังตรวจหาเซลล์ให้ท่านอยู่เบื้องหลัง</span>
+        <div id="guideBgTrack"><div id="guideBgFill"></div></div>
+      </div>
+      <div class="guideFoot">
+        <label><input type="checkbox" id="guideSkip">ไม่ต้องแสดงอัตโนมัติอีก</label>
+        <span id="guideCount"></span>
+        <button id="guideDone" class="primary" type="button">เข้าใจแล้ว เริ่มใช้งาน</button>
+      </div>
     </div>
-    <button id="filePickBtn" type="button">&#128196; Or select individual images</button>
-    <input type="file" id="fileInput" multiple accept="image/*,.tif,.tiff,.bmp" style="display:none">
+  </div>
+
+  <div id="uploadScreen">
+    <h1>ตรวจและจำแนกเม็ดเลือดขาวจากภาพสไลด์</h1>
+    <p class="lead">อัปโหลดภาพหรือโฟลเดอร์ภาพสไลด์เลือด ระบบจะตรวจหาและจำแนกเม็ดเลือดขาวให้โดยอัตโนมัติ จากนั้นท่านเพียงตรวจสอบและแก้ไขให้ถูกต้อง</p>
+    <div id="steps">
+      <div class="step"><i>1</i>อัปโหลดภาพ</div>
+      <div class="step"><i>2</i>ระบบตรวจหาอัตโนมัติ</div>
+      <div class="step"><i>3</i>ตรวจสอบและบันทึก</div>
+    </div>
+    <div id="dropZone" tabindex="0" role="button" aria-label="อัปโหลดภาพหรือโฟลเดอร์">
+      <div class="icon">&#128194;</div>
+      <div class="big">ลากภาพหรือโฟลเดอร์มาวางที่นี่<br>หรือคลิกเพื่อเลือก</div>
+      <div class="small">รองรับ .jpg &nbsp;.jpeg &nbsp;.png &nbsp;.bmp &nbsp;.tif &nbsp;.tiff &middot; ระบบจะรับทั้งไฟล์และโฟลเดอร์ให้โดยอัตโนมัติ</div>
+    </div>
     <input type="file" id="folderInput" webkitdirectory directory multiple style="display:none">
     <div id="uploadStatus"></div>
     <div id="uploadProgress">
@@ -189,28 +271,24 @@
 
   <div id="layout">
     <div id="toolbar">
-      <button id="newFolderBtn" title="Attach a different folder">&larr; New folder</button>
-      <button id="prevBtn">&larr;</button>
-      <button id="nextBtn">&rarr;</button>
-      <button id="fitBtn">Fit</button>
-      <button id="zoomInBtn">Zoom +</button>
-      <button id="zoomOutBtn">Zoom -</button>
-      <button id="panBtn" class="toggle" title="Pan tool: drag the image to slide it around">
-        <span class="icon">&#9995;</span>Pan
-      </button>
-      <button id="detectBtn">Auto Detect (D)</button>
-      <button id="detectAllBtn" title="Run auto-detect on every unlabeled image in the folder">Detect All</button>
-      <button id="advBtn">Settings</button>
-      <span id="status">—</span>
+      <div class="group">
+        <button id="prevBtn" title="ไปยังภาพก่อนหน้า (แป้นลูกศรซ้าย)">&larr; ภาพก่อนหน้า</button>
+        <button id="nextBtn" title="ไปยังภาพถัดไป (แป้นลูกศรขวา)">ภาพถัดไป &rarr;</button>
+      </div>
+      <div class="group" id="clsGroup">
+        <label id="clsLabel" for="clsSelect">ชนิดเซลล์สำหรับกรอบใหม่</label>
+        <select id="clsSelect"></select>
+        <button id="deleteBtn" class="danger" title="ลบกรอบที่เลือก">ลบกรอบ</button>
+      </div>
       <div class="spacer"></div>
-      <select id="clsSelect" title="class of the selected box (and of new boxes)"></select>
-      <button id="deleteBtn" class="danger">Delete box</button>
-      <button id="saveBtn" class="primary">Save (Ctrl+S)</button>
-      <button id="saveNextBtn" class="primary">Save &amp; next (Enter)</button>
+      <div class="group">
+        <button id="saveBtn" class="primary">บันทึก (Ctrl+S)</button>
+        <button id="saveNextBtn" class="success">บันทึกและไปภาพถัดไป (Enter)</button>
+      </div>
     </div>
     <div id="body">
       <div id="sidebar">
-        <h2>Images <span id="imgCount"></span></h2>
+        <h2>รายการภาพ <span id="imgCount"></span></h2>
         <div id="files"></div>
       </div>
       <div id="main">
@@ -220,20 +298,19 @@
         </div>
         <div id="canvasWrap">
           <canvas id="canvas"></canvas>
-          <div id="boxClassPicker">
-            <button id="boxClassPickerBtn" type="button" title="Wrong class? Click to pick the right one"></button>
-            <div id="boxClassPickerList"></div>
-          </div>
-          <div id="advPanel">
-            <label>Normalize stain <input type="checkbox" id="normStain" checked></label>
-            <label>Box threshold <input type="range" id="boxTh" min="0.05" max="0.9" step="0.01"><span id="boxThV"></span></label>
-            <label>Text threshold <input type="range" id="textTh" min="0.05" max="0.9" step="0.01"><span id="textThV"></span></label>
-            <label>Max box area <input type="range" id="maxArea" min="0.01" max="0.9" step="0.01"><span id="maxAreaV"></span></label>
+          <div id="status">—</div>
+          <div id="viewTools">
+            <button id="zoomInBtn" title="ขยายภาพ">&#128269; ขยาย +</button>
+            <button id="zoomOutBtn" title="ย่อภาพ">&#128269; ย่อ &minus;</button>
+            <button id="panBtn" class="toggle" title="เครื่องมือเลื่อนภาพ: กดเมาส์ค้างบนภาพแล้วลากเพื่อเลื่อน">&#9995; เลื่อนภาพ</button>
           </div>
           <div id="help">
-            Pan tool (hand icon): drag to slide the image &middot; Box tool: drag empty area for new box, drag inside to move, drag corner to resize<br>
-            Right-drag always pans &middot; Wheel: zoom &middot; D: re-detect &middot; F: fit &middot; Enter: save &amp; next &middot; &larr;/&rarr;: prev/next image &middot; Tab: cycle boxes
+            <b>คำแนะนำการใช้งาน</b><br>
+            &bull; ลากบนพื้นที่ว่างเพื่อสร้างกรอบใหม่ &middot; ลากภายในกรอบเพื่อเลื่อนตำแหน่ง &middot; ลากที่มุมกรอบเพื่อปรับขนาด<br>
+            &bull; คลิกที่กรอบ แล้วเลือกชนิดเซลล์ที่ถูกต้องจากแถบด้านบน<br>
+            &bull; แป้นลัด: D ตรวจซ้ำเฉพาะภาพนี้ &middot; F พอดีจอ &middot; Enter บันทึกและไปภาพถัดไป &middot; &larr; &rarr; เปลี่ยนภาพ &middot; Tab สลับกรอบ
           </div>
+          <button id="helpToggle" type="button" title="ซ่อนหรือแสดงคำแนะนำ">ซ่อนคำแนะนำ</button>
           <div id="flash"></div>
         </div>
       </div>
@@ -243,11 +320,15 @@
 
 <script>
 const $ = id => document.getElementById(id);
-const HANDLE = 9;
+const HANDLE = 16;
 
 let CLASSES = [], DEFAULTS = {};
 let SESSION_ID = null;
 let images = [], index = -1, img = null, boxes = [], selected = -1, dirty = false;
+let bgBusy = false;      // background detection of the uploaded set is running (never blocks the UI)
+let singleBusy = false;  // single-image re-detect (D key) is running
+let unsavedEdits = 0;    // edits made on the open image that are not saved yet
+let lastShownDirty = false;
 let tool = 'box'; // 'box' | 'pan'
 let view = { scale: 1, ox: 0, oy: 0 };
 
@@ -261,7 +342,7 @@ function flash(text, isErr) {
   el.textContent = text;
   el.className = isErr ? 'err' : '';
   el.style.opacity = 1;
-  setTimeout(() => el.style.opacity = 0, 1200);
+  setTimeout(() => el.style.opacity = 0, 2200);
 }
 
 // -------------------------------------------------------------------- stats --
@@ -286,26 +367,25 @@ async function openStats() {
   const e = st.edits;
   const kpi = (v, l) => `<div class="chip"><b>${v}</b><span>${l}</span></div>`;
   let h = `<div class="kpis">
-    ${kpi(st.images_annotated + (all || !SESSION_ID ? '' : ' / ' + st.images_total), 'images annotated')}
-    ${kpi(st.images_reviewed, 'reviewed by human')}
-    ${kpi(st.images_edited, 'images edited')}
-    ${kpi(e.total, 'edits made')}
-    ${kpi(pct(st.class_accuracy), 'class accuracy')}
-    ${kpi(pct(st.detection_precision), 'box precision')}
+    ${kpi(st.images_annotated + (all || !SESSION_ID ? '' : ' / ' + st.images_total), 'ภาพที่ดำเนินการแล้ว')}
+    ${kpi(st.images_reviewed, 'ภาพที่ผู้ใช้ตรวจสอบแล้ว')}
+    ${kpi(st.images_edited, 'ภาพที่มีการแก้ไข')}
+    ${kpi(e.total, 'จำนวนครั้งที่แก้ไข')}
+    ${kpi(pct(st.class_accuracy), 'ความถูกต้องของการจำแนกชนิด')}
+    ${kpi(pct(st.detection_precision), 'ความแม่นยำของกรอบ')}
   </div>
-  <h4>Edits made to model output</h4>
-  <table><tr><th></th><th>Class changed</th><th>Box moved/resized</th><th>Box deleted</th><th>Box added</th><th>Total</th></tr>
-  <tr><td>count</td><td>${e.class_changed}</td><td>${e.box_adjusted}</td><td>${e.deleted}</td><td>${e.added}</td><td><b>${e.total}</b></td></tr></table>
-  <h4>Accuracy per class</h4>
-  <table><tr><th>Class</th><th>Model said</th><th>Correct</th><th>Wrong</th><th>Actually was</th><th>Precision</th><th>Recall</th></tr>
+  <h4>รายการแก้ไขจากผลการจำแนกของระบบ</h4>
+  <table><tr><th></th><th>เปลี่ยนชนิด</th><th>ย้าย/ปรับขนาดกรอบ</th><th>ลบกรอบ</th><th>เพิ่มกรอบ</th><th>รวม</th></tr>
+  <tr><td>จำนวน</td><td>${e.class_changed}</td><td>${e.box_adjusted}</td><td>${e.deleted}</td><td>${e.added}</td><td><b>${e.total}</b></td></tr></table>
+  <h4>ความแม่นยำแยกตามชนิดเซลล์</h4>
+  <table><tr><th>ชนิดเซลล์</th><th>ระบบจำแนกเป็น</th><th>ถูก</th><th>ผิด</th><th>ชนิดที่แท้จริง</th><th>ความแม่นยำ</th><th>ความครบถ้วน</th></tr>
   ${st.per_class.map(c => `<tr><td>${c.class}</td><td>${c.predicted}</td><td>${c.correct}</td><td>${c.wrong}</td><td>${c.actual}</td><td>${pct(c.precision)}</td><td>${pct(c.recall)}</td></tr>`).join('')}
   </table>
-  <h4>Confusion matrix (rows: model, columns: human-corrected)</h4>
+  <h4>ตารางเปรียบเทียบ (แถว: ผลจากระบบ, คอลัมน์: ผลหลังการแก้ไขโดยผู้ใช้)</h4>
   <table><tr><th></th>${st.classes.map(c => `<th>${c}</th>`).join('')}</tr>
   ${st.confusion.map((row, i) => `<tr><td>${st.classes[i]}</td>${row.map((v, j) => `<td class="${i === j ? 'diag' : ''}">${v}</td>`).join('')}</tr>`).join('')}
   </table>
-  <p class="note">Only images the annotator saved after auto-detect are compared (Detect All output that has not been reviewed is not counted).
-  A box counts as matched at IoU &ge; 0.5; "Box moved/resized" is a matched box with IoU &lt; 0.9.</p>`;
+  <p class="note">หมายเหตุ: นับเฉพาะภาพที่ผู้ใช้บันทึกหลังการตรวจหาเซลล์ (ผลจากการตรวจหาอัตโนมัติที่ยังไม่ได้ตรวจสอบจะไม่ถูกนับ) กรอบจะถือว่าตรงกันเมื่อค่า IoU &ge; 0.5 และ &ldquo;ย้าย/ปรับขนาดกรอบ&rdquo; หมายถึงกรอบที่ตรงกันแต่มีค่า IoU &lt; 0.9</p>`;
   $('statsBody').innerHTML = h;
   $('statsModal').classList.add('open');
 }
@@ -316,63 +396,67 @@ $('statsModal').addEventListener('mousedown', e => { if (e.target === $('statsMo
 
 // -------------------------------------------------------------- progress bar --
 function updateProgress() {
+  if (bgBusy) return;  // do not overwrite live detection progress
   const fill = $('progressFill'), text = $('progressText');
   fill.classList.remove('busy');
   if (index < 0 || !images.length) { fill.style.width = '0%'; text.textContent = '—'; return; }
   const done = index + 1, total = images.length, left = total - done;
   fill.style.width = (done / total * 100) + '%';
-  text.textContent = `Image ${done} of ${total}  ·  ${left} left`;
+  text.textContent = `ภาพที่ ${done} จากทั้งหมด ${total} ภาพ  ·  คงเหลือ ${left} ภาพ`;
 }
 
 function setDetectingProgress(on) {
   const fill = $('progressFill'), text = $('progressText');
   if (on) {
     fill.classList.add('busy');
-    text.textContent = `Detecting cells in image ${index + 1} of ${images.length}…`;
+    fill.style.width = '100%';
+    text.textContent = `ระบบกำลังตรวจหาเซลล์ในภาพที่ ${index + 1} โปรดรอสักครู่`;
   } else {
     updateProgress();
   }
 }
 
 // ------------------------------------------------------------- upload flow --
-const dropZone = $('dropZone'), fileInput = $('fileInput'), folderInput = $('folderInput');
-// primary: whole-folder picker - every image inside the chosen folder is
-// attached automatically, no manual multi-select needed
+// One drop area handles everything: dropped files, dropped folders (searched
+// recursively) or a mix of both. Clicking opens the folder picker.
+const dropZone = $('dropZone'), folderInput = $('folderInput');
 dropZone.addEventListener('click', () => folderInput.click());
+dropZone.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); folderInput.click(); } });
 folderInput.addEventListener('change', () => { if (folderInput.files.length) upload(folderInput.files); });
 
-// alternative: plain file dialog for cherry-picking specific images
-// (browsers default this to single-select unless the user selects several)
-$('filePickBtn').addEventListener('click', e => { e.stopPropagation(); fileInput.click(); });
-fileInput.addEventListener('change', () => { if (fileInput.files.length) upload(fileInput.files); });
-
-dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag'); });
-dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag'));
-dropZone.addEventListener('drop', async e => {
+const screen = $('uploadScreen');
+screen.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag'); });
+screen.addEventListener('dragleave', e => { if (e.target === screen) dropZone.classList.remove('drag'); });
+screen.addEventListener('drop', async e => {
   e.preventDefault();
   dropZone.classList.remove('drag');
   const files = await filesFromDataTransfer(e.dataTransfer);
   if (files.length) upload(files);
 });
+// a file dropped outside the upload screen must not make the browser navigate away
+window.addEventListener('dragover', e => e.preventDefault());
+window.addEventListener('drop', e => e.preventDefault());
 
 async function filesFromDataTransfer(dt) {
-  // Supports a dropped folder (webkitGetAsEntry) as well as plain file drops.
   const items = dt.items;
-  if (!items || !items[0] || !items[0].webkitGetAsEntry) return Array.from(dt.files);
+  if (!items || !items.length || !items[0].webkitGetAsEntry) return Array.from(dt.files);
+  // entries must be grabbed synchronously, before the first await
+  const entries = Array.from(items).map(it => it.webkitGetAsEntry && it.webkitGetAsEntry()).filter(Boolean);
   const out = [];
   async function walk(entry) {
     if (entry.isFile) {
-      await new Promise(res => entry.file(f => { out.push(f); res(); }));
+      await new Promise(res => entry.file(f => { out.push(f); res(); }, () => res()));
     } else if (entry.isDirectory) {
       const reader = entry.createReader();
-      const entries = await new Promise(res => reader.readEntries(res));
-      for (const e of entries) await walk(e);
+      // readEntries returns at most ~100 entries per call: keep reading until empty
+      for (;;) {
+        const batch = await new Promise(res => reader.readEntries(res, () => res([])));
+        if (!batch.length) break;
+        for (const child of batch) await walk(child);
+      }
     }
   }
-  for (const it of items) {
-    const entry = it.webkitGetAsEntry && it.webkitGetAsEntry();
-    if (entry) await walk(entry);
-  }
+  for (const en of entries) await walk(en);
   return out;
 }
 
@@ -403,8 +487,14 @@ function postBatch(files, sid, onProgress) {
 async function upload(fileList) {
   // folders often contain non-image files (labels, thumbs.db...) - skip them
   const files = Array.from(fileList).filter(f => IMG_EXT.test(f.name));
-  if (!files.length) { $('uploadStatus').textContent = 'no images found in the attached folder'; return; }
-  const totalBytes = files.reduce((s, f) => s + f.size, 0);
+  const status = $('uploadStatus');
+  status.classList.remove('err');
+  if (!files.length) {
+    status.classList.add('err');
+    status.textContent = 'ไม่พบไฟล์ภาพที่รองรับ กรุณาเลือกไฟล์หรือโฟลเดอร์ที่มีภาพ';
+    return;
+  }
+  const totalBytes = files.reduce((s, f) => s + f.size, 0) || 1;
   const totalMB = fmtMB(totalBytes);
   $('uploadProgress').classList.add('active');
   $('uploadProgressFill').style.width = '0%';
@@ -415,35 +505,42 @@ async function upload(fileList) {
       const batch = files.slice(i, i + BATCH);
       const batchBytes = batch.reduce((s, f) => s + f.size, 0);
       const d = await postBatch(batch, sid, loaded => {
-        const sent = doneBytes + loaded, pct = Math.round(sent / totalBytes * 100);
+        const sent = doneBytes + loaded, pct = Math.min(100, Math.round(sent / totalBytes * 100));
         $('uploadProgressFill').style.width = pct + '%';
-        $('uploadStatus').textContent =
-          `Uploading ${files.length} image(s)... ${fmtMB(sent)} / ${totalMB} MB (${pct}%)`;
+        status.textContent = `กำลังอัปโหลดภาพจำนวน ${files.length} ภาพ  ${fmtMB(sent)} / ${totalMB} MB (${pct}%)`;
       });
       sid = d.session_id;
       doneBytes += batchBytes;
     }
     $('uploadProgressFill').style.width = '100%';
-    $('uploadStatus').textContent = 'Upload complete, opening viewer...';
-    SESSION_ID = sid;
-    $('uploadScreen').style.display = 'none';
-    $('layout').classList.add('active');
-    resize();
-    await loadImages();
+    status.textContent = 'อัปโหลดเสร็จสมบูรณ์ ระบบกำลังเริ่มตรวจหาเซลล์';
+    openSession(sid, { guide: true });
   } catch (e) {
-    $('uploadStatus').textContent = 'upload failed: ' + e.message;
+    status.classList.add('err');
+    status.textContent = 'การอัปโหลดไม่สำเร็จ: ' + e.message;
   } finally {
     $('uploadProgress').classList.remove('active');
   }
+}
+
+// show the workspace and start detection straight away - no button needed
+async function openSession(sid, opts = {}) {
+  SESSION_ID = sid;
+  $('uploadScreen').style.display = 'none';
+  $('layout').classList.add('active');
+  resize();
+  await loadImages();
+  detectAll();              // runs in the background; the UI stays usable
+  if (opts.guide) showGuideAuto();
 }
 
 async function loadImages() {
   images = await (await fetch('/api/images?session_id=' + encodeURIComponent(SESSION_ID))).json();
   $('imgCount').textContent = `(${images.length})`;
   renderFiles();
-  $('statChips').style.display = 'flex';  // counters only exist once a folder is open
+  $('statChips').style.display = 'flex';  // counters only exist once images are open
   refreshChips();
-  if (images.length) select(0);
+  if (images.length) await select(0);
 }
 
 // --------------------------------------------------------------------- boot --
@@ -452,62 +549,69 @@ async function boot() {
   CLASSES = cfg.classes;
   DEFAULTS = cfg.defaults;
   $('clsSelect').innerHTML = CLASSES.map((n, i) => `<option value="${i}">${n}</option>`).join('');
-  $('boxClassPickerList').innerHTML = CLASSES
-    .map((n, i) => `<div class="opt" data-cid="${i}">${n}</div>`).join('');
-  $('boxTh').min = 0.05; $('boxTh').max = 0.9; $('boxTh').value = DEFAULTS.box_threshold;
-  $('textTh').value = DEFAULTS.text_threshold;
-  $('maxArea').value = DEFAULTS.max_box_area_frac;
-  $('normStain').checked = !!DEFAULTS.normalize_stain;
-  updateAdvLabels();
 
   // a link like /?session_id=xyz jumps straight into a session someone
-  // already uploaded (e.g. via the API), skipping the folder picker
+  // already uploaded (e.g. via the API), skipping the upload screen
   const sid = new URLSearchParams(location.search).get('session_id');
-  if (sid) {
-    SESSION_ID = sid;
-    $('uploadScreen').style.display = 'none';
-    $('layout').classList.add('active');
-    resize();
-    await loadImages();
-  }
+  if (sid) await openSession(sid);
 }
 boot();
 
-function updateAdvLabels() {
-  $('boxThV').textContent = parseFloat($('boxTh').value).toFixed(2);
-  $('textThV').textContent = parseFloat($('textTh').value).toFixed(2);
-  $('maxAreaV').textContent = parseFloat($('maxArea').value).toFixed(2);
+const STATE_TXT = { pending:'รอตรวจหา', review:'รอการตรวจสอบ', unsaved:'มีการเปลี่ยนแปลงที่ยังไม่ได้บันทึก', done:'ตรวจสอบแล้ว' };
+function stateOf(f, i) {
+  if (i === index && dirty) return 'unsaved';
+  if (!f.labeled) return 'pending';
+  return f.reviewed ? 'done' : 'review';
 }
-['boxTh', 'textTh', 'maxArea'].forEach(id => $(id).addEventListener('input', updateAdvLabels));
 
-function renderFiles() {
+function renderFiles(scrollToActive = true) {
   const el = $('files');
+  const keep = el.scrollTop;
+  lastShownDirty = dirty;
   el.innerHTML = '';
   images.forEach((f, i) => {
+    const st = stateOf(f, i);
     const d = document.createElement('div');
-    d.className = 'file-item' + (i === index ? ' active' : '');
-    d.innerHTML = `<span class="nm">${f.name}</span><span class="dot ${f.labeled ? 'done' : ''}"></span>`;
-    d.onclick = () => { if (askDiscard()) select(i); };
+    d.className = 'file-item' + (i === index ? ' active' : '') + (st === 'unsaved' ? ' unsaved' : '');
+    d.innerHTML = `<span class="nm">${f.name}</span><span class="tag ${st}">${STATE_TXT[st]}</span>`;
+    d.onclick = () => { if (!singleBusy && askDiscard()) select(i); };
     el.appendChild(d);
   });
+  el.scrollTop = keep;
   const active = el.querySelector('.active');
-  if (active) active.scrollIntoView({ block: 'nearest' });
+  if (scrollToActive && active) active.scrollIntoView({ block: 'nearest' });
 }
 
-function askDiscard() { return !dirty || confirm('Discard unsaved changes?'); }
+function updateUnsavedChip() {
+  $('chUnsaved').textContent = unsavedEdits;
+  $('chUnsavedWrap').classList.toggle('alert', unsavedEdits > 0);
+}
+function markEdit() { dirty = true; unsavedEdits++; }
+function syncDirtyUI() {
+  updateUnsavedChip();
+  if (lastShownDirty !== dirty) renderFiles(false);
+  status();
+}
+
+function askDiscard() { return !dirty || confirm('มีการแก้ไขที่ยังไม่ได้บันทึก ท่านต้องการยกเลิกการแก้ไขหรือไม่'); }
 
 async function select(i) {
-  index = i; selected = -1; dirty = false;
+  index = i; selected = -1; dirty = false; unsavedEdits = 0;
   renderFiles();
+  updateUnsavedChip();
   updateProgress();
   const f = images[i];
-  const q = `session_id=${encodeURIComponent(SESSION_ID)}&name=${encodeURIComponent(f.name)}`;
-  const [el, lab] = await Promise.all([
+  const wasLabeled = f.labeled;
+  const labelUrl = `/api/label?session_id=${encodeURIComponent(SESSION_ID)}&name=${encodeURIComponent(f.name)}`;
+  let [el, lab] = await Promise.all([
     loadImg(`/img/${encodeURIComponent(SESSION_ID)}/${encodeURIComponent(f.name)}`),
-    fetch('/api/label?' + q).then(r => r.json()),
+    fetch(labelUrl).then(r => r.json()),
   ]);
+  if (index !== i) return;                       // user already clicked another image
+  if (f.labeled && !wasLabeled) lab = await (await fetch(labelUrl)).json();  // detection landed meanwhile
   img = el;
   boxes = lab.boxes;
+  selected = -1;
   fit();
   status();
 }
@@ -519,14 +623,15 @@ function loadImg(src) {
   });
 }
 
+// detection always uses the server-side defaults (there is no settings panel)
 function detectParams(name) {
   return {
     session_id: SESSION_ID, name,
-    box_threshold: parseFloat($('boxTh').value),
-    text_threshold: parseFloat($('textTh').value),
-    max_box_area_frac: parseFloat($('maxArea').value),
+    box_threshold: DEFAULTS.box_threshold,
+    text_threshold: DEFAULTS.text_threshold,
+    max_box_area_frac: DEFAULTS.max_box_area_frac,
     nms_iou: DEFAULTS.nms_iou,
-    normalize_stain: $('normStain').checked,
+    normalize_stain: !!DEFAULTS.normalize_stain,
   };
 }
 
@@ -540,71 +645,78 @@ async function detectRequest(name) {
   return d.boxes;
 }
 
+// keyboard shortcut D: re-detect only the image on screen
 async function detect() {
-  if (index < 0) return;
-  $('detectBtn').disabled = true;
-  $('detectBtn').textContent = 'Detecting…';
+  if (bgBusy) { flash('ระบบกำลังตรวจหาอัตโนมัติอยู่ โปรดรอให้เสร็จก่อน', true); return; }
+  if (singleBusy || index < 0) return;
+  singleBusy = true;
   setDetectingProgress(true);
   try {
     boxes = await detectRequest(images[index].name);
     selected = boxes.length ? 0 : -1;
-    dirty = true;
-    if (!boxes.length) flash('no cell detected', true);
-    else flash(`detected ${boxes.length} cell${boxes.length === 1 ? '' : 's'}`);
+    markEdit();
+    if (!boxes.length) flash('ไม่พบเซลล์ในภาพนี้', true);
+    else flash(`ตรวจพบเซลล์ ${boxes.length} เซลล์`);
   } catch (e) {
     flash(e.message, true);
   } finally {
-    $('detectBtn').disabled = false;
-    $('detectBtn').textContent = 'Auto Detect (D)';
+    singleBusy = false;
     setDetectingProgress(false);
-    status(); draw();
+    syncDirtyUI(); draw();
   }
 }
 
+// mirror the detection progress into the top bar and into the how-to popup
+function setBar(pctVal, textStr, busyNow) {
+  const fill = $('progressFill');
+  fill.classList.toggle('busy', !!busyNow);
+  fill.style.width = pctVal + '%';
+  $('progressText').textContent = textStr;
+  $('guideBgText').textContent = textStr;
+  $('guideBgFill').style.width = pctVal + '%';
+}
+
+// runs automatically after every upload, in the background: detects every image
+// that has no labels yet while the user keeps browsing and checking images
 async function detectAll() {
-  if (!images.length) return;
-  if (dirty && !confirm('Discard unsaved changes on the current image and run batch detection?')) return;
+  if (bgBusy || !images.length) return;
   const targets = images.map((f, i) => i).filter(i => !images[i].labeled);
-  if (!targets.length) { flash('every image is already labeled'); return; }
+  if (!targets.length) { updateProgress(); return; }
 
-  ['detectBtn', 'detectAllBtn', 'prevBtn', 'nextBtn', 'newFolderBtn'].forEach(id => $(id).disabled = true);
-  $('detectAllBtn').textContent = 'Detecting…';
-  const fill = $('progressFill'), text = $('progressText');
-  fill.classList.remove('busy');
-
-  let ok = 0, failed = 0;
+  bgBusy = true;
+  let ok = 0, failed = 0, lastErr = '';
   for (let k = 0; k < targets.length; k++) {
     const i = targets[k];
-    fill.style.width = (k / targets.length * 100) + '%';
-    text.textContent = `Detect All: image ${k + 1} of ${targets.length}  (${images[i].name})`;
+    if (images[i].labeled) continue;              // user saved it in the meantime
+    const p = Math.round(k / targets.length * 100);
+    setBar(p, `ระบบกำลังตรวจหาเซลล์อัตโนมัติ  ภาพที่ ${k + 1} จากทั้งหมด ${targets.length} ภาพ (${p}%)`, true);
     try {
       const b = await detectRequest(images[i].name);
+      if (images[i].labeled) continue;            // saved by the user while we were detecting
       await fetch('/api/label', {
         method: 'POST', headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({ session_id: SESSION_ID, name: images[i].name, boxes: b, reviewed: false }),
       });
       images[i].labeled = true;
+      images[i].reviewed = false;                 // yellow: waiting for a person to check it
       ok++;
+      if (i === index && !dirty) {                // image on screen: show its boxes right away
+        boxes = b; selected = boxes.length ? 0 : -1;
+        status(); draw();
+      }
     } catch (e) {
-      failed++;
+      failed++; lastErr = e.message;
     }
+    renderFiles(false);
   }
 
-  fill.style.width = '100%';
-  text.textContent = `Detect All done: ${ok} labeled${failed ? `, ${failed} failed` : ''}`;
-  renderFiles();
+  bgBusy = false;
+  const summary = `ตรวจหาเสร็จสิ้น: สำเร็จ ${ok} ภาพ${failed ? `  ไม่สำเร็จ ${failed} ภาพ` : ''}  กรุณาตรวจสอบภาพที่มีป้ายสีเหลืองและกดบันทึก`;
+  setBar(100, summary, false);
   refreshChips();
-  if (index >= 0) {
-    await select(index);
-    // select() always clears the selection - pick the first box so the
-    // class dropdown immediately applies to something, same as a single Detect
-    selected = boxes.length ? 0 : -1;
-    status(); draw();
-  }
-  ['detectBtn', 'detectAllBtn', 'prevBtn', 'nextBtn', 'newFolderBtn'].forEach(id => $(id).disabled = false);
-  $('detectAllBtn').textContent = 'Detect All';
-  flash(`detect all: ${ok} image(s) labeled${failed ? `, ${failed} failed` : ''}`, failed > 0 && ok === 0);
-  setTimeout(updateProgress, 1500);
+  flash(failed && !ok ? (lastErr || 'การตรวจหาไม่สำเร็จ') : summary, failed > 0 && ok === 0);
+  syncDirtyUI(); draw();
+  setTimeout(updateProgress, 6000);
 }
 
 // ------------------------------------------------------------------- canvas --
@@ -628,11 +740,20 @@ function zoomBy(factor) {
 }
 
 function status() {
-  const f = images[index];
-  $('status').textContent = f
-    ? `${index + 1}/${images.length}  ${f.name}  ·  ${boxes.length} box${boxes.length === 1 ? '' : 'es'}${dirty ? '  ·  unsaved' : ''}`
-    : '—';
-  if (selected >= 0) $('clsSelect').value = boxes[selected].class_id >= 0 ? boxes[selected].class_id : 0;
+  const f = images[index], el = $('status');
+  if (f) {
+    const st = stateOf(f, index);
+    const lead = (st === 'review' || st === 'unsaved') ? STATE_TXT[st] + '  ·  ' : '';
+    el.textContent = `${lead}ภาพที่ ${index + 1}/${images.length}  ${f.name}  ·  ${boxes.length} กรอบ`;
+    el.className = st === 'review' ? 'review' : st === 'unsaved' ? 'unsaved' : '';
+  } else {
+    el.textContent = '—';
+    el.className = '';
+  }
+  // the single class dropdown (top bar) follows the selected box
+  if (selected >= 0 && boxes[selected]) $('clsSelect').value = boxes[selected].class_id >= 0 ? boxes[selected].class_id : 0;
+  $('clsLabel').textContent = selected >= 0 ? 'ชนิดเซลล์ของกรอบที่เลือก' : 'ชนิดเซลล์สำหรับกรอบใหม่';
+  $('clsGroup').classList.toggle('active', selected >= 0);
 }
 
 const toS = (x, y) => [x * view.scale + view.ox, y * view.scale + view.oy];
@@ -653,92 +774,35 @@ function draw() {
     const r = rectOf(b);
     const [x0, y0] = toS(r.x, r.y), [x1, y1] = toS(r.x + r.w, r.y + r.h);
     const sel = i === selected;
-    ctx.lineWidth = sel ? 3 : 2;
+    ctx.lineWidth = sel ? 5 : 3;
     ctx.strokeStyle = sel ? '#f59e0b' : '#dc2626';
     ctx.strokeRect(x0, y0, x1 - x0, y1 - y0);
 
     const clsName = CLASSES[b.class_id] ?? (b.class_name || 'Unknown');
     const scoreTxt = b.cls_score ? ' ' + b.cls_score.toFixed(2) : '';
     const label = `${clsName}${scoreTxt}`;
-    ctx.font = '600 13px system-ui, sans-serif';
+    ctx.font = '700 20px "Sarabun","Noto Sans Thai",Tahoma,sans-serif';
     const tw = ctx.measureText(label).width;
     ctx.fillStyle = sel ? '#f59e0b' : '#dc2626';
-    ctx.fillRect(x0, y0 - 20, tw + 10, 20);
+    ctx.fillRect(x0, y0 - 32, tw + 14, 32);
     ctx.fillStyle = '#ffffff';
-    ctx.fillText(label, x0 + 5, y0 - 6);
+    ctx.fillText(label, x0 + 7, y0 - 9);
 
     if (sel) {
       ctx.fillStyle = '#f59e0b';
-      [[x0, y0], [x1, y0], [x0, y1], [x1, y1]].forEach(([cx, cy]) => ctx.fillRect(cx - 4, cy - 4, 8, 8));
+      [[x0, y0], [x1, y0], [x0, y1], [x1, y1]].forEach(([cx, cy]) => ctx.fillRect(cx - 8, cy - 8, 16, 16));
     }
   });
 
   if (draft) {
     const [x0, y0] = toS(draft.x0, draft.y0), [x1, y1] = toS(draft.x1, draft.y1);
-    ctx.strokeStyle = '#2563eb'; ctx.lineWidth = 2; ctx.setLineDash([6, 4]);
+    ctx.strokeStyle = '#0f766e'; ctx.lineWidth = 4; ctx.setLineDash([6, 4]);
     ctx.strokeRect(x0, y0, x1 - x0, y1 - y0);
     ctx.setLineDash([]);
   }
-
-  positionBoxClassPicker();
 }
 
-// floating "wrong class? pick the right one" dropdown that follows the
-// selected box, so a bad auto-detection can be fixed right where it is.
-// Built from plain divs (not a native <select>) so a click always lands
-// exactly where expected, with no OS-popup hit-testing over the canvas.
-function positionBoxClassPicker() {
-  const picker = $('boxClassPicker'), btn = $('boxClassPickerBtn');
-  if (selected < 0 || !boxes[selected] || !img) {
-    picker.style.display = 'none';
-    closeBoxClassPickerList();
-    return;
-  }
-  const b = boxes[selected];
-  const cid = b.class_id >= 0 ? b.class_id : 0;
-  btn.textContent = CLASSES[cid] ?? 'Unknown';
-  const r = rectOf(b);
-  const [x0, y0] = toS(r.x, r.y);
-  picker.style.display = 'block';
-  const pickerH = 34;
-  const top = y0 - pickerH - 4 >= 0 ? y0 - pickerH - 4 : Math.min(canvas.height - pickerH, y0 + 6);
-  const left = Math.max(4, Math.min(canvas.width - picker.offsetWidth - 4, x0));
-  picker.style.top = top + 'px';
-  picker.style.left = left + 'px';
-  highlightBoxClassPickerList(cid);
-}
-
-function highlightBoxClassPickerList(cid) {
-  $('boxClassPickerList').querySelectorAll('.opt').forEach(el =>
-    el.classList.toggle('sel', parseInt(el.dataset.cid, 10) === cid));
-}
-
-function closeBoxClassPickerList() { $('boxClassPickerList').classList.remove('open'); }
-
-$('boxClassPicker').addEventListener('mousedown', e => e.stopPropagation());
-$('boxClassPicker').addEventListener('click', e => e.stopPropagation());
-
-$('boxClassPickerBtn').addEventListener('click', () => {
-  $('boxClassPickerList').classList.toggle('open');
-});
-
-$('boxClassPickerList').addEventListener('click', e => {
-  const opt = e.target.closest('.opt');
-  if (!opt || selected < 0) return;
-  const cid = parseInt(opt.dataset.cid, 10);
-  boxes[selected].class_id = cid;
-  boxes[selected].class_name = CLASSES[cid];
-  dirty = true;
-  closeBoxClassPickerList();
-  status(); draw();
-});
-
-// close the popup list when clicking anywhere else on the page
-document.addEventListener('mousedown', e => {
-  if (!$('boxClassPicker').contains(e.target)) closeBoxClassPickerList();
-});
-
-let mode = null, draft = null, dragStart = null, boxStart = null, corner = null;
+let mode = null, draft = null, dragStart = null, boxStart = null, corner = null, moved = false;
 
 function hitCorner(b, sx, sy) {
   const r = rectOf(b);
@@ -806,7 +870,7 @@ window.addEventListener('mousemove', e => {
   } else if (mode === 'move') {
     const dx = (sx - dragStart.sx) / view.scale, dy = (sy - dragStart.sy) / view.scale;
     setBox(selected, boxStart.x + dx, boxStart.y + dy, boxStart.w, boxStart.h);
-    dirty = true;
+    dirty = true; moved = true;
   } else if (mode === 'resize') {
     const [ix, iy] = toI(sx, sy);
     let x0 = boxStart.x, y0 = boxStart.y, x1 = boxStart.x + boxStart.w, y1 = boxStart.y + boxStart.h;
@@ -815,7 +879,7 @@ window.addEventListener('mousemove', e => {
     if (corner.includes('w')) x0 = ix;
     if (corner.includes('e')) x1 = ix;
     setBox(selected, Math.min(x0, x1), Math.min(y0, y1), Math.abs(x1 - x0), Math.abs(y1 - y0));
-    dirty = true;
+    dirty = true; moved = true;
   }
   draw();
 });
@@ -827,13 +891,14 @@ window.addEventListener('mouseup', () => {
     if (w > 3 && h > 3) {
       boxes.push(mkBox(x, y, w, h, parseInt($('clsSelect').value, 10)));
       selected = boxes.length - 1;
-      dirty = true;
+      markEdit();
     }
     draft = null;
   }
+  if (moved) { unsavedEdits++; moved = false; }   // a finished move/resize counts as one edit
   mode = null; dragStart = null; boxStart = null; corner = null;
   canvas.classList.remove('panning');
-  status(); draw();
+  syncDirtyUI(); draw();
 });
 
 function setBox(i, x, y, w, h) {
@@ -865,8 +930,8 @@ wrap.addEventListener('wheel', e => {
 // ------------------------------------------------------------------ actions --
 function delSelected() {
   if (selected < 0) return;
-  boxes.splice(selected, 1); selected = -1; dirty = true;
-  status(); draw();
+  boxes.splice(selected, 1); selected = -1; markEdit();
+  syncDirtyUI(); draw();
 }
 
 async function save() {
@@ -875,15 +940,17 @@ async function save() {
     method: 'POST', headers: {'Content-Type': 'application/json'},
     body: JSON.stringify({ session_id: SESSION_ID, name: images[index].name, boxes }),
   });
-  if (!res.ok) { flash('save failed', true); return false; }
-  dirty = false;
+  if (!res.ok) { flash('ไม่สามารถบันทึกข้อมูลได้', true); return false; }
+  dirty = false; unsavedEdits = 0;
   images[index].labeled = true;
-  renderFiles(); status(); refreshChips();
-  flash(`saved ${boxes.length} box${boxes.length === 1 ? '' : 'es'}`);
+  images[index].reviewed = true;
+  renderFiles(false); updateUnsavedChip(); status(); refreshChips();
+  flash(`บันทึกข้อมูลเรียบร้อย (${boxes.length} กรอบ)`);
   return true;
 }
 
 function go(delta) {
+  if (singleBusy) return;
   const i = index + delta;
   if (i < 0 || i >= images.length) return;
   if (askDiscard()) select(i);
@@ -891,28 +958,36 @@ function go(delta) {
 
 $('prevBtn').onclick = () => go(-1);
 $('nextBtn').onclick = () => go(1);
-$('fitBtn').onclick = fit;
 $('zoomInBtn').onclick = () => zoomBy(1.25);
 $('zoomOutBtn').onclick = () => zoomBy(0.8);
-$('detectBtn').onclick = detect;
-$('detectAllBtn').onclick = detectAll;
 $('deleteBtn').onclick = delSelected;
 $('saveBtn').onclick = save;
 $('saveNextBtn').onclick = async () => { if (await save()) go(1); };
-$('advBtn').onclick = () => $('advPanel').classList.toggle('open');
 $('newFolderBtn').onclick = () => {
-  if (dirty && !confirm('Discard unsaved changes and attach a new folder?')) return;
-  location.reload();
+  if (singleBusy) return;
+  if (dirty && !confirm('มีการแก้ไขที่ยังไม่ได้บันทึก ท่านต้องการยกเลิกการแก้ไขและอัปโหลดภาพชุดใหม่หรือไม่')) return;
+  if (bgBusy && !confirm('ระบบกำลังตรวจหาเซลล์อยู่เบื้องหลัง ท่านต้องการหยุดและอัปโหลดภาพชุดใหม่หรือไม่')) return;
+  location.href = location.pathname;   // back to the upload screen
 };
+// the one class dropdown (top bar): changes the class of the selected box,
+// and is also the class given to the next box the user draws
 $('clsSelect').onchange = e => {
-  if (selected < 0) return;
+  if (selected < 0 || !boxes[selected]) return;
   boxes[selected].class_id = parseInt(e.target.value, 10);
   boxes[selected].class_name = CLASSES[boxes[selected].class_id];
-  dirty = true; draw(); status();
+  markEdit(); draw(); syncDirtyUI();
 };
 
 window.addEventListener('keydown', e => {
+  if ($('guideModal').classList.contains('open')) {   // slideshow keys
+    if (e.key === 'Escape') { e.preventDefault(); closeGuide(); }
+    else if (e.key === 'ArrowRight') { e.preventDefault(); guideGo(1); }
+    else if (e.key === 'ArrowLeft') { e.preventDefault(); guideGo(-1); }
+    return;
+  }
   if (e.target.tagName === 'SELECT' || e.target.tagName === 'INPUT') return;
+  if ($('statsModal').classList.contains('open')) return;
+  if (!$('layout').classList.contains('active')) return;
   if (e.key === 's' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); save(); }
   else if (e.key === 'Enter') { e.preventDefault(); $('saveNextBtn').click(); }
   else if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); delSelected(); }
@@ -929,6 +1004,72 @@ window.addEventListener('keydown', e => {
   else if (e.key === '-' || e.key === '_') { e.preventDefault(); zoomBy(0.8); }
   else if (e.key === 'v' || e.key === 'V') { e.preventDefault(); setTool(tool === 'pan' ? 'box' : 'pan'); }
 });
+
+// -------------------------------------------------------- how-to slideshow --
+// Placeholder pictures for now: replace static/img/guide/stepN.svg with real screenshots.
+const GUIDE = [
+  { img:'/static/img/guide/step1.svg', title:'ขั้นตอนที่ 1  อัปโหลดภาพ',
+    text:'ลากภาพหรือโฟลเดอร์มาวางที่กรอบ หรือคลิกเพื่อเลือกโฟลเดอร์ ระบบรับทั้งไฟล์และโฟลเดอร์ให้โดยอัตโนมัติ' },
+  { img:'/static/img/guide/step2.svg', title:'ขั้นตอนที่ 2  ระบบตรวจหาเซลล์อัตโนมัติ',
+    text:'ระบบตรวจหาเม็ดเลือดขาวเบื้องหลัง ท่านคลิกดูภาพอื่นได้ระหว่างรอ และดูความคืบหน้าที่แถบด้านบน' },
+  { img:'/static/img/guide/step3.svg', title:'ขั้นตอนที่ 3  ตรวจสอบภาพที่มีป้ายสีเหลือง',
+    text:'ภาพที่ระบบตรวจเสร็จจะมีป้าย “รอการตรวจสอบ” คลิกที่กรอบ แล้วเลือกชนิดเซลล์ที่ถูกต้องจากแถบด้านบน' },
+  { img:'/static/img/guide/step4.svg', title:'ขั้นตอนที่ 4  แก้ไขกรอบเมื่อจำเป็น',
+    text:'ลากบนพื้นที่ว่างเพื่อสร้างกรอบใหม่ ลากภายในกรอบเพื่อย้าย ลากที่มุมเพื่อปรับขนาด หรือกด “ลบกรอบ”' },
+  { img:'/static/img/guide/step5.svg', title:'ขั้นตอนที่ 5  บันทึกผล',
+    text:'กด “บันทึกและไปภาพถัดไป” ภาพที่มีป้ายสีแดงคือมีการเปลี่ยนแปลงที่ยังไม่ได้บันทึก' },
+];
+let guideIdx = 0;
+const GUIDE_SKIP_KEY = 'hemascanGuideSkip';
+
+function renderGuide() {
+  const g = GUIDE[guideIdx];
+  $('guideImg').src = g.img;
+  $('guideImg').alt = g.title;
+  $('guideStepTitle').textContent = g.title;
+  $('guideStepText').textContent = g.text;
+  $('guideCount').textContent = `${guideIdx + 1} / ${GUIDE.length}`;
+  $('guidePrev').disabled = guideIdx === 0;
+  $('guideNext').disabled = guideIdx === GUIDE.length - 1;
+  $('guideDots').innerHTML = GUIDE.map((_, i) => `<span class="${i === guideIdx ? 'on' : ''}" data-i="${i}"></span>`).join('');
+}
+function guideGo(d) {
+  const n = guideIdx + d;
+  if (n < 0 || n >= GUIDE.length) return;
+  guideIdx = n; renderGuide();
+}
+function openGuide() {
+  guideIdx = 0; renderGuide();
+  $('guideBg').style.display = bgBusy ? '' : 'none';
+  try { $('guideSkip').checked = localStorage.getItem(GUIDE_SKIP_KEY) === '1'; } catch (e) { /* storage blocked */ }
+  $('guideModal').classList.add('open');
+  $('guideDone').focus();
+}
+function closeGuide() {
+  try { localStorage.setItem(GUIDE_SKIP_KEY, $('guideSkip').checked ? '1' : '0'); } catch (e) { /* storage blocked */ }
+  $('guideModal').classList.remove('open');
+}
+function showGuideAuto() {
+  let skip = false;
+  try { skip = localStorage.getItem(GUIDE_SKIP_KEY) === '1'; } catch (e) { /* storage blocked */ }
+  if (!skip) openGuide();
+}
+$('guideBtn').onclick = openGuide;
+$('guideClose').onclick = closeGuide;
+$('guideDone').onclick = closeGuide;
+$('guidePrev').onclick = () => guideGo(-1);
+$('guideNext').onclick = () => guideGo(1);
+$('guideDots').addEventListener('click', e => {
+  const s = e.target.closest('span[data-i]');
+  if (s) { guideIdx = parseInt(s.dataset.i, 10); renderGuide(); }
+});
+$('guideModal').addEventListener('mousedown', e => { if (e.target === $('guideModal')) closeGuide(); });
+
+$('helpToggle').onclick = () => {
+  const h = $('help'), hide = h.style.display !== 'none';
+  h.style.display = hide ? 'none' : '';
+  $('helpToggle').textContent = hide ? 'แสดงคำแนะนำ' : 'ซ่อนคำแนะนำ';
+};
 </script>
 </body>
 </html>
