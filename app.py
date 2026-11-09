@@ -1,157 +1,55 @@
 """
-WBC detection + classification website.
+WBC label review website (CPU only, no model).
 
 Workflow:
-  1. User attaches a folder of images from the browser.
-  2. Images are shown one at a time, in order, with pan/zoom.
-  3. "Auto detect" first stain-normalises the field (Reinhard LAB mean/std
-     match onto the classifier's training stain - see stain_eval/stain.py),
-     then runs the fine-tuned GroundingDINO checkpoint (WBC/finetuned/best.pth)
-     to find white-blood-cell boxes, then crops each box (same crop geometry
-     used to train the classifier - cell box fills ~42% of the crop) and runs
-     the YOLOv8 classifier
-     (label_website/wbc_website_train/rgb_cells_setting_website_v8m/weights/best.pt)
-     to assign a class label to every box.
-  4. The user can drag/resize boxes and change their class; edits are saved
+  1. User attaches (a) label files - YOLO .txt (one per image, `class cx cy w h`,
+     matched to the image by file name) or a .csv - and (b) the images.
+  2. As soon as both are chosen they are uploaded, the CSV rows are matched to
+     the images by file name and the review workspace opens.
+  3. The user can drag/resize boxes and change their class; edits are saved
      as YOLO-format label files.
+
+CSV columns (header row, names are case-insensitive, any order):
+  image : filename | file | image | image_name | img | path   (extension optional)
+  class : class | class_name | label | category | cls | class_id (name or number)
+  box   : EITHER  cx,cy,w,h            (YOLO, normalised 0-1; also x_center,y_center,width,height)
+          OR      xmin,ymin,xmax,ymax  (pixels; also x1,y1,x2,y2)
+          OR      x,y,w,h              (pixels, top-left corner + size)
 
 Run:
     python3 app.py
 Then open http://localhost:5080
 """
+import csv
 import io
 import json
 import os
-import sys
 import threading
-import time
 import uuid
 from pathlib import Path
 
-import cv2
-import numpy as np
-import torch
 from flask import Flask, jsonify, request, send_file, send_from_directory
 from PIL import Image
 
 _here = Path(__file__).resolve().parent
 
-# ------------------------------------------------------------------ paths ---
-_vision_root = Path(os.environ.get(
-    "VISION_ROOT", "/home/skuba/skuba_ws/src/try_vision_project")).resolve()
-_vectection = _vision_root / "vectection"
-_gdino_repo = _vectection / "GroundingDINO"
-if str(_gdino_repo) not in sys.path:
-    sys.path.insert(0, str(_gdino_repo))
-_stain_eval = _vision_root / "stain_eval"
-if str(_stain_eval) not in sys.path:
-    sys.path.insert(0, str(_stain_eval))
-
-import groundingdino.datasets.transforms as gd_transforms  # noqa: E402
-from groundingdino.util.inference import load_model, predict  # noqa: E402
-from ultralytics import YOLO  # noqa: E402
-from stain import reinhard  # noqa: E402  (stain_eval/stain.py)
-
-DET_WEIGHTS = Path(os.environ.get("WBC_DET_WEIGHTS", _vectection / "WBC/finetuned/best.pth"))
-GDINO_CONFIG = str(_gdino_repo / "groundingdino/config/GroundingDINO_SwinT_OGC.py")
-TEXT_PROMPT = os.environ.get("WBC_PROMPT", "white blood cell")
-
-CLS_WEIGHTS = Path(os.environ.get(
-    "WBC_CLS_WEIGHTS",
-    _vision_root / "label_website/wbc_website_train/rgb_cells_setting_website_v8m/weights/best.pt",
-))
-
-# LAB mean/std of the classifier's training crops (fit_reference.py). Fields
-# get Reinhard-matched onto this before detection/classification so their
-# stain looks like what the models were trained on.
-STAIN_REFERENCE = Path(os.environ.get("WBC_STAIN_REFERENCE", _stain_eval / "stain_reference.npz"))
-_stain_ref = np.load(STAIN_REFERENCE) if STAIN_REFERENCE.exists() else None
-STAIN_LAB_MEAN = _stain_ref["lab_mean"].astype(np.float32) if _stain_ref is not None else None
-STAIN_LAB_STD = _stain_ref["lab_std"].astype(np.float32) if _stain_ref is not None else None
+DEFAULT_CLASSES = ['Band Neutrophil', 'Basophil', 'Blast cell', 'Eosinophil', 'Lymphocyte',
+                   'Mast cell', 'Monocyte', 'Segmented Neutrophil', 'Toxic neutrophil',
+                   'nRBC', 'Giant platelet', 'Macrophage']
+CLASSES = list(DEFAULT_CLASSES)
 
 UPLOAD_ROOT = _here / "uploads"
 LABEL_ROOT = _here / "labels"
-# per-image review bookkeeping (model output snapshot + reviewed flag), kept
-# next to the labels so it rides on the same mounted volume
+# per-image review bookkeeping (original CSV boxes snapshot + reviewed flag)
 META_ROOT = LABEL_ROOT / "_meta"
 UPLOAD_ROOT.mkdir(parents=True, exist_ok=True)
 LABEL_ROOT.mkdir(parents=True, exist_ok=True)
 
-DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".bmp", ".tif", ".tiff"}
 TRANSCODE_EXT = {".tif", ".tiff", ".bmp"}
 JPEG_QUALITY = 88
 
-# crop geometry copied from stain_eval/detect_rgb_twostage.py: in the
-# classifier's training crops the cell box fills ~42% of the crop width, so
-# the crop side is ~2.4x the box side. Matching that puts cells at the scale
-# the classifier actually saw during training.
-CROP_SCALE = 1 / 0.42
-CROP_PX = 384
-
-DETECT_DEFAULTS = {
-    "box_threshold": 0.30,
-    "text_threshold": 0.25,
-    "max_box_area_frac": 0.20,
-    "nms_iou": 0.5,
-    "normalize_stain": True,
-}
-
-_GDINO_TRANSFORM = gd_transforms.Compose([
-    gd_transforms.RandomResize([800], max_size=1333),
-    gd_transforms.ToTensor(),
-    gd_transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
-])
-
 app = Flask(__name__, static_folder=str(_here / "static"), static_url_path="/static")
-
-GPU_LOCK = threading.Lock()
-_det_model = None
-_cls_model = None
-_model_lock = threading.Lock()
-
-
-def get_det_model():
-    global _det_model
-    with _model_lock:
-        if _det_model is None:
-            if not DET_WEIGHTS.exists():
-                raise RuntimeError(f"detector weights not found: {DET_WEIGHTS}")
-            print(f"loading detector {DET_WEIGHTS} on {DEVICE} ...", flush=True)
-            _det_model = load_model(GDINO_CONFIG, str(DET_WEIGHTS), device=DEVICE)
-            print("detector ready", flush=True)
-    return _det_model
-
-
-# selectable class models: "12" (default, the original classifier) and "5"
-MODEL_WEIGHTS = {
-    "12": CLS_WEIGHTS,
-    "5": Path(os.environ.get(
-        "WBC_CLS5_WEIGHTS",
-        _vision_root / "label_website/wbc_website_train/rgb_cells_5classes/weights/best.pt")),
-}
-DEFAULT_MODEL = "12"
-_cls_models = {}
-
-
-def get_cls_model(key=DEFAULT_MODEL):
-    with _model_lock:
-        if key not in _cls_models:
-            w = MODEL_WEIGHTS.get(key)
-            if w is None or not w.exists():
-                raise RuntimeError(f"{key}-classes model weights not found: {w}")
-            print(f"loading classifier {w} ...", flush=True)
-            _cls_models[key] = YOLO(str(w))
-            print("classifier ready", flush=True)
-    return _cls_models[key]
-
-
-def class_names(key=DEFAULT_MODEL):
-    return list(get_cls_model(key).names.values())
-
-
-CLASSES = class_names() if CLS_WEIGHTS.exists() else []
-CLASS_ID = {name: i for i, name in enumerate(CLASSES)}
 
 
 # ------------------------------------------------------------------ sessions
@@ -267,7 +165,8 @@ def match_boxes(pred, final):
 
 def compute_stats(sids):
     """Aggregate annotation progress, edit counts and model accuracy over sessions."""
-    n = len(CLASSES)
+    classes = session_classes(sids[0]) if len(sids) == 1 else list(CLASSES)
+    n = len(classes)
     out = {
         "images_total": 0, "images_annotated": 0, "images_reviewed": 0,
         "images_edited": 0, "boxes_final": 0,
@@ -324,7 +223,7 @@ def compute_stats(sids):
     e["total"] = e["class_changed"] + e["box_adjusted"] + e["deleted"] + e["added"]
 
     per_class = []
-    for i, name in enumerate(CLASSES):
+    for i, name in enumerate(classes):
         predicted = sum(confusion[i]) + deleted_by_class[i]   # model said class i
         correct = confusion[i][i]
         actual = sum(row[i] for row in confusion) + added_by_class[i]  # truly class i
@@ -336,7 +235,7 @@ def compute_stats(sids):
         })
     out["per_class"] = per_class
     out["confusion"] = confusion
-    out["classes"] = CLASSES
+    out["classes"] = classes
     out["class_accuracy"] = out["class_correct"] / out["matched"] if out["matched"] else None
     out["detection_precision"] = out["matched"] / out["model_boxes"] if out["model_boxes"] else None
     return out
@@ -350,127 +249,202 @@ def stats_sessions(sid_arg):
     return sorted(ids)
 
 
-# --------------------------------------------------------------- detection --
 
-def nms(boxes, scores, iou_threshold, contain_threshold=0.8):
-    """Greedy NMS over cxcywh boxes -> indices to keep."""
-    if len(boxes) < 2:
-        return list(range(len(boxes)))
-    cx, cy, w, h = boxes[:, 0], boxes[:, 1], boxes[:, 2], boxes[:, 3]
-    x0, y0, x1, y1 = cx - w / 2, cy - h / 2, cx + w / 2, cy + h / 2
-    areas = (w * h).clamp(min=1e-12)
-    order = torch.argsort(scores, descending=True).tolist()
-
-    keep = []
-    while order:
-        i = order.pop(0)
-        keep.append(i)
-        if not order:
-            break
-        rest = torch.tensor(order)
-        ix0 = torch.maximum(x0[i], x0[rest])
-        iy0 = torch.maximum(y0[i], y0[rest])
-        ix1 = torch.minimum(x1[i], x1[rest])
-        iy1 = torch.minimum(y1[i], y1[rest])
-        inter = (ix1 - ix0).clamp(min=0) * (iy1 - iy0).clamp(min=0)
-        iou = inter / (areas[i] + areas[rest] - inter)
-        ios = inter / torch.minimum(areas[i], areas[rest])
-        drop = (iou > iou_threshold) | (ios > contain_threshold)
-        order = [o for o, d in zip(order, drop.tolist()) if not d]
-    return keep
+# ------------------------------------------------------- session classes ----
+def classes_file(sid):
+    return LABEL_ROOT / sid / "_classes.json"
 
 
-def normalize_stain_bgr(bgr):
-    """Reinhard LAB mean/std match onto the classifier's training stain."""
-    if STAIN_LAB_MEAN is None:
-        return bgr
-    return reinhard(bgr, STAIN_LAB_MEAN, STAIN_LAB_STD)
+def session_classes(sid):
+    try:
+        return json.loads(classes_file(sid).read_text())
+    except (OSError, ValueError):
+        return list(CLASSES)
 
 
-def crop_square(bgr, cx_px, cy_px, side):
-    """Centred square crop at CROP_PX, edge-replicated where it runs off the image.
-
-    Matches stain_eval/detect_rgb_twostage.py's crop_square so cells land at
-    the scale/framing the classifier was trained on.
-    """
-    H, W = bgr.shape[:2]
-    half = side / 2.0
-    x0, y0 = int(round(cx_px - half)), int(round(cy_px - half))
-    x1, y1 = x0 + int(round(side)), y0 + int(round(side))
-    pl, pt = max(0, -x0), max(0, -y0)
-    pr, pb = max(0, x1 - W), max(0, y1 - H)
-    sub = bgr[max(0, y0):min(H, y1), max(0, x0):min(W, x1)]
-    if sub.size == 0:
-        return None
-    if pl or pt or pr or pb:
-        sub = cv2.copyMakeBorder(sub, pt, pb, pl, pr, cv2.BORDER_REPLICATE)
-    return cv2.resize(sub, (CROP_PX, CROP_PX), interpolation=cv2.INTER_AREA)
+def save_session_classes(sid, names):
+    p = classes_file(sid)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(json.dumps(names))
 
 
-def classify_crop(bgr_field, box, model_key=DEFAULT_MODEL):
-    """Crop `box` (cxcywh, normalised) out of the (already stain-matched) field and classify it."""
-    H, W = bgr_field.shape[:2]
-    cx, cy, w, h = box
-    side = max(w * W, h * H) * CROP_SCALE
-    crop = crop_square(bgr_field, cx * W, cy * H, side)
-    if crop is None:
-        return None, 0.0
+# ------------------------------------------------------- YOLO .txt import ---
+def import_labels(sid, files):
+    """files = [(filename, text)]. Handles YOLO .txt (one per image, `class cx cy w h`) and .csv."""
+    images = {}
+    for p in session_dir(sid).iterdir():
+        if p.is_file() and p.suffix.lower() in IMAGE_EXTENSIONS:
+            images.setdefault(p.stem.lower(), p)
+    names = session_classes(sid)
+    txts = [(n, t) for n, t in files if n.lower().endswith(".txt")]
+    csvs = [(n, t) for n, t in files if n.lower().endswith(".csv")]
+    # optional class-name list shipped with the labels (YOLO convention)
+    for n, t in txts:
+        if n.lower() in ("classes.txt", "obj.names", "names.txt"):
+            lst = [x.strip() for x in t.splitlines() if x.strip()]
+            if lst:
+                names = lst
+                save_session_classes(sid, names)
+    res = {"matched_images": 0, "boxes": 0, "images_total": len(images), "unmatched_names": [],
+           "unmatched_count": 0, "bad_rows": 0, "classes": names}
+    for n, t in txts:
+        if n.lower() in ("classes.txt", "obj.names", "names.txt"):
+            continue
+        img = images.get(Path(n).stem.lower())
+        if img is None:
+            res["unmatched_count"] += 1
+            res["unmatched_names"].append(n)
+            continue
+        boxes = []
+        for line in t.splitlines():
+            parts = line.split()
+            if not parts:
+                continue
+            try:
+                cid = int(float(parts[0]))
+                cx, cy, w, h = (float(v) for v in parts[1:5])
+                if len(parts) < 5:
+                    raise ValueError
+            except ValueError:
+                res["bad_rows"] += 1
+                continue
+            boxes.append({"class_id": cid, "cx": cx, "cy": cy, "w": w, "h": h})
+        write_label(sid, img.name, boxes)
+        update_meta(sid, img.name, reviewed=False, pred=boxes)
+        res["matched_images"] += 1
+        res["boxes"] += len(boxes)
+    # class ids beyond the known list get placeholder names so the UI can show them
+    top = max((b["class_id"] for n, t in txts for b in [{"class_id": int(float(l.split()[0]))}
+               for l in t.splitlines() if l.split() and l.split()[0].lstrip("-").replace(".", "").isdigit()]), default=-1)
+    while len(names) <= top:
+        names.append(f"class {len(names)}")
+    save_session_classes(sid, names)
+    res["classes"] = names
+    for n, t in csvs:
+        r = import_csv(sid, t)
+        for k in ("matched_images", "boxes", "unmatched_count", "bad_rows"):
+            res[k] += r[k]
+        res["unmatched_names"] += r["unmatched_names"]
+        res["classes"] = r["classes"]
+    res["unlabeled_images"] = sorted(p.name for p in set(images.values())
+                                     if not label_path(sid, p.name).exists())
+    if not txts and not csvs:
+        raise ValueError("no .txt or .csv label files found")
+    return res
 
-    model = get_cls_model(model_key)
-    with GPU_LOCK:
-        res = model.predict(crop, verbose=False, device=DEVICE)[0]
-    if res.boxes is None or len(res.boxes) == 0:
-        return None, 0.0
-    confs = res.boxes.conf
-    best = int(torch.argmax(confs))
-    cid = int(res.boxes.cls[best])
-    score = float(confs[best])
-    return cid, score
+
+# ------------------------------------------------------------- CSV import ---
+_ALIASES = {
+    "image": ("filename", "file", "image", "image_name", "image_id", "img", "path", "file_name", "name"),
+    "cls": ("class", "class_name", "classname", "label", "category", "cls", "class_id", "classid"),
+    "cx": ("cx", "x_center", "xc", "x_centre"),
+    "cy": ("cy", "y_center", "yc", "y_centre"),
+    "w": ("w", "width", "bbox_width", "box_width"),
+    "h": ("h", "height", "bbox_height", "box_height"),
+    "x0": ("xmin", "x_min", "x1", "left"),
+    "y0": ("ymin", "y_min", "y1", "top"),
+    "x1": ("xmax", "x_max", "x2", "right"),
+    "y1": ("ymax", "y_max", "y2", "bottom"),
+    "x": ("x",),
+    "y": ("y",),
+}
 
 
-def gdino_predict_bgr(bgr, box_threshold, text_threshold):
-    rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
-    pil_img = Image.fromarray(rgb)
-    image_transformed, _ = _GDINO_TRANSFORM(pil_img, None)
-    model = get_det_model()
-    with GPU_LOCK:
-        boxes, logits, phrases = predict(
-            model=model, image=image_transformed, caption=TEXT_PROMPT,
-            box_threshold=box_threshold, text_threshold=text_threshold,
-            device=DEVICE,
-        )
-    return boxes, logits
+def _pick(fields, key):
+    for a in _ALIASES[key]:
+        if a in fields:
+            return fields[a]
+    return None
 
 
-def detect_and_classify(image_path, box_threshold, text_threshold,
-                        max_box_area_frac, nms_iou, normalize_stain, model_key=DEFAULT_MODEL):
-    names = class_names(model_key)
-    bgr = cv2.imread(str(image_path))
-    if bgr is None:
-        # cv2 cannot read some TIFF variants - fall back to PIL
-        bgr = cv2.cvtColor(np.asarray(Image.open(image_path).convert("RGB")), cv2.COLOR_RGB2BGR)
-    bgr = normalize_stain_bgr(bgr) if normalize_stain else bgr
+def _resolve_class(token, names):
+    t = str(token).strip()
+    if t.lstrip("-").isdigit() and 0 <= int(t) < len(names):
+        return int(t)
+    low = t.lower()
+    for i, n in enumerate(names):
+        if n.lower() == low:
+            return i
+    if not t:
+        return -1
+    names.append(t)  # a class that is not in the default list: add it to this session
+    return len(names) - 1
 
-    boxes, logits = gdino_predict_bgr(bgr, box_threshold, text_threshold)
-    if len(boxes):
-        area = boxes[:, 2] * boxes[:, 3]
-        keep = area <= max_box_area_frac
-        boxes, logits = boxes[keep], logits[keep]
-    if nms_iou and len(boxes) > 1:
-        idx = nms(boxes, logits, float(nms_iou))
-        boxes, logits = boxes[idx], logits[idx]
 
-    out = []
-    for (cx, cy, w, h), det_score in zip(boxes.tolist(), logits.tolist()):
-        cid, cls_score = classify_crop(bgr, (cx, cy, w, h), model_key)
-        out.append({
-            "class_id": cid if cid is not None else -1,
-            "class_name": names[cid] if cid is not None and cid < len(names) else "Unknown",
-            "cx": cx, "cy": cy, "w": w, "h": h,
-            "det_score": round(float(det_score), 4),
-            "cls_score": round(float(cls_score), 4),
-        })
-    return out
+def import_csv(sid, text):
+    """Parse the label CSV and write YOLO labels for every image already uploaded to `sid`."""
+    text = text.lstrip("\ufeff")
+    try:
+        dialect = csv.Sniffer().sniff(text[:4096], delimiters=",;\t")
+    except csv.Error:
+        dialect = csv.excel
+    reader = csv.reader(io.StringIO(text), dialect)
+    rows = [r for r in reader if any(c.strip() for c in r)]
+    if len(rows) < 2:
+        raise ValueError("the CSV file has no data rows")
+    header = [h.strip().lower().replace(" ", "_") for h in rows[0]]
+
+    images = {}
+    for p in session_dir(sid).iterdir():
+        if p.is_file() and p.suffix.lower() in IMAGE_EXTENSIONS:
+            images[p.name.lower()] = p
+            images.setdefault(p.stem.lower(), p)
+    sizes = {}
+    names = session_classes(sid)
+    per_image, unmatched, bad = {}, set(), 0
+
+    for r in rows[1:]:
+        f = {header[i]: r[i].strip() for i in range(min(len(header), len(r)))}
+        fn = _pick(f, "image")
+        if not fn:
+            raise ValueError("no image-name column found (expected one of: "
+                             + ", ".join(_ALIASES["image"]) + ")")
+        key = Path(fn.replace("\\", "/")).name.lower()
+        img = images.get(key) or images.get(Path(key).stem)
+        if img is None:
+            unmatched.add(fn)
+            continue
+        try:
+            cls = _resolve_class(_pick(f, "cls") or "", names)
+            cx, cy, w, h = (_pick(f, k) for k in ("cx", "cy", "w", "h"))
+            x0, y0, x1, y1 = (_pick(f, k) for k in ("x0", "y0", "x1", "y1"))
+            x, y = _pick(f, "x"), _pick(f, "y")
+            if img not in sizes:
+                with Image.open(img) as im:
+                    sizes[img] = im.size
+            W, H = sizes[img]
+            if x0 is not None and y0 is not None and x1 is not None and y1 is not None:
+                x0, y0, x1, y1 = float(x0), float(y0), float(x1), float(y1)
+                if max(x0, y0, x1, y1) <= 1.0:      # already normalised corners
+                    x0, x1, y0, y1 = x0 * W, x1 * W, y0 * H, y1 * H
+                cx, cy, w, h = (x0 + x1) / 2 / W, (y0 + y1) / 2 / H, (x1 - x0) / W, (y1 - y0) / H
+            elif None not in (cx, cy, w, h):
+                cx, cy, w, h = float(cx), float(cy), float(w), float(h)
+                if max(cx, cy, w, h) > 1.0:          # pixel centre/size
+                    cx, w, cy, h = cx / W, w / W, cy / H, h / H
+            elif None not in (x, y, w, h):
+                x, y, w, h = float(x), float(y), float(w), float(h)
+                if max(x, y, w, h) <= 1.0:
+                    cx, cy = x + w / 2, y + h / 2
+                else:
+                    cx, cy, w, h = (x + w / 2) / W, (y + h / 2) / H, w / W, h / H
+            else:
+                raise ValueError("no box columns")
+        except (ValueError, TypeError, OSError):
+            bad += 1
+            continue
+        per_image.setdefault(img, []).append(
+            {"class_id": cls, "cx": cx, "cy": cy, "w": w, "h": h})
+
+    for img, boxes in per_image.items():
+        write_label(sid, img.name, boxes)
+        update_meta(sid, img.name, reviewed=False, pred=boxes)
+    save_session_classes(sid, names)
+    all_imgs = {p for p in images.values()}
+    return {"matched_images": len(per_image), "boxes": sum(len(b) for b in per_image.values()),
+            "images_total": len(all_imgs), "images_without_labels": len(all_imgs) - len(per_image),
+            "unmatched_names": sorted(unmatched), "unmatched_count": len(unmatched),
+            "bad_rows": bad, "classes": names}
 
 
 # ------------------------------------------------------------------- routes --
@@ -482,32 +456,31 @@ def index():
 
 @app.route("/api/config")
 def api_config():
-    return jsonify({
-        "det_weights": str(DET_WEIGHTS),
-        "cls_weights": str(CLS_WEIGHTS),
-        "device": DEVICE,
-        "classes": CLASSES,
-        "models": {k: {"available": w.exists(), "classes": class_names(k) if w.exists() else []}
-                   for k, w in MODEL_WEIGHTS.items()},
-        "default_model": DEFAULT_MODEL,
-        "defaults": DETECT_DEFAULTS,
-    })
+    return jsonify({"classes": CLASSES, "defaults": {}, "models": {}, "default_model": "12"})
+
+
+@app.route("/api/session_classes")
+def api_session_classes():
+    sid = safe_session(request.args.get("session_id", ""))
+    if not sid:
+        return jsonify({"error": "unknown session"}), 404
+    return jsonify({"classes": session_classes(sid)})
 
 
 @app.route("/api/upload", methods=["POST"])
 def api_upload():
-    """Accept a batch of files (a whole attached folder) and start a session."""
+    """Accept a batch of image files and start / extend a session."""
     sid = request.form.get("session_id") or str(uuid.uuid4())
+    if not sid.replace("-", "").isalnum():
+        return jsonify({"error": "bad session id"}), 400
     d = session_dir(sid)
     d.mkdir(parents=True, exist_ok=True)
 
     saved = []
     for f in request.files.getlist("files"):
-        rel = f.filename or ""
-        name = Path(rel).name  # flatten - ignore sub-folder structure
+        name = Path(f.filename or "").name  # flatten - ignore sub-folder structure
         if Path(name).suffix.lower() not in IMAGE_EXTENSIONS:
             continue
-        # de-dupe flattened names
         target = d / name
         if target.exists():
             target = d / f"{Path(name).stem}_{uuid.uuid4().hex[:6]}{Path(name).suffix}"
@@ -515,10 +488,23 @@ def api_upload():
         saved.append(target.name)
 
     if not saved:
-        return jsonify({"error": "no images found in the attached folder"}), 400
-
+        return jsonify({"error": "no images found in the selected files"}), 400
     saved.sort()
     return jsonify({"session_id": sid, "images": saved})
+
+
+@app.route("/api/upload_csv", methods=["POST"])
+def api_upload_csv():
+    """Attach the CSV label file to a session (after its images are uploaded)."""
+    sid = safe_session(request.form.get("session_id", ""))
+    fl = request.files.getlist("csv")
+    if not sid or not fl:
+        return jsonify({"error": "missing session or label files"}), 400
+    try:
+        files = [(Path(f.filename or "").name, f.read().decode("utf-8-sig", errors="replace")) for f in fl]
+        return jsonify(import_labels(sid, files))
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
 
 
 @app.route("/api/images")
@@ -590,8 +576,7 @@ def api_export_zip():
         for f in sorted((LABEL_ROOT / sid).glob("*.txt")):
             z.write(f, f.name)
         if request.args.get("crops"):
-            names = class_names(request.args.get("model", DEFAULT_MODEL)
-                                if request.args.get("model") in MODEL_WEIGHTS else DEFAULT_MODEL)
+            names = session_classes(sid)
             for lf in sorted((LABEL_ROOT / sid).glob("*.txt")):
                 img_p = next((q for q in (UPLOAD_ROOT / sid).iterdir() if q.stem == lf.stem), None) \
                     if (UPLOAD_ROOT / sid).exists() else None
@@ -640,47 +625,14 @@ def api_stats_csv():
                               headers={"Content-Disposition": "attachment; filename=model_accuracy.csv"})
 
 
-@app.route("/api/detect", methods=["POST"])
-def api_detect():
-    body = request.get_json(force=True) or {}
-    sid = safe_session(body.get("session_id", ""))
-    name = body.get("name", "")
-    p = safe_image(sid, name) if sid else None
-    if not p:
-        return jsonify({"error": "not found"}), 404
-    try:
-        boxes = detect_and_classify(
-            p,
-            float(body.get("box_threshold", DETECT_DEFAULTS["box_threshold"])),
-            float(body.get("text_threshold", DETECT_DEFAULTS["text_threshold"])),
-            float(body.get("max_box_area_frac", DETECT_DEFAULTS["max_box_area_frac"])),
-            float(body.get("nms_iou", DETECT_DEFAULTS["nms_iou"])),
-            bool(body.get("normalize_stain", DETECT_DEFAULTS["normalize_stain"])),
-            body.get("model", DEFAULT_MODEL) if body.get("model") in MODEL_WEIGHTS else DEFAULT_MODEL,
-        )
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-    # snapshot the raw model output so later human edits can be measured against it
-    update_meta(sid, name, reviewed=False, pred=[{k: b[k] for k in ("class_id", "cx", "cy", "w", "h")} for b in boxes])
-    return jsonify({"boxes": boxes})
-
-
 if __name__ == "__main__":
-    print(f"detector  : {DET_WEIGHTS}")
-    print(f"classifier: {CLS_WEIGHTS}")
-    print(f"device    : {DEVICE}")
-    print(f"classes   : {CLASSES}")
     port = int(os.environ.get("PORT", 5080))
     print(f"open http://localhost:{port}")
-    # load the detector now so the first Auto Detect click is not a long stall
-    threading.Thread(target=get_det_model, daemon=True).start()
     try:
         from waitress import serve
     except ImportError:
         app.run(host="0.0.0.0", port=port, threaded=True)
     else:
-        # folders are uploaded in batches of large .tif files: allow big bodies
-        # and slow clients instead of dropping the connection
         serve(app, host="0.0.0.0", port=port,
               threads=int(os.environ.get("WEB_THREADS", 8)),
               max_request_body_size=16 * 1024 ** 3,

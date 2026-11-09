@@ -89,18 +89,27 @@
                   gap:14px; padding:24px; overflow:auto; }
   #uploadScreen h1 { font-size:38px; margin:0; font-weight:800; color:var(--navy); text-align:center; line-height:1.3; }
   #uploadScreen p.lead { color:var(--muted); font-size:22px; margin:0; max-width:820px; text-align:center; line-height:1.6; }
+  #mismatch { width:900px; max-width:94vw; background:#fff; border:3px solid var(--warn); border-radius:16px; padding:16px 22px; text-align:left; }
+  #mismatch .mmCols { display:flex; gap:24px; flex-wrap:wrap; }
+  #mismatch .mmCols > div { flex:1 1 360px; }
+  #mismatch h4 { margin:10px 0 4px; font-size:18px; }
+  #mismatch ul { margin:0; padding-left:22px; max-height:200px; overflow:auto; font-size:17px; background:#faf6ef; border-radius:8px; }
+  #mismatch button { margin-top:12px; }
+  #inputs { display:flex; gap:22px; flex-wrap:wrap; justify-content:center; }
+  #inputs .dropZone { width:440px; }
   #steps { display:flex; gap:14px; flex-wrap:wrap; justify-content:center; }
   .step { display:flex; align-items:center; gap:10px; background:var(--panel); border:2px solid var(--line);
           border-radius:14px; padding:10px 18px; font-size:19px; font-weight:600; }
   .step i { font-style:normal; width:36px; height:36px; border-radius:50%; background:var(--teal); color:#fff;
             display:flex; align-items:center; justify-content:center; font-weight:800; flex-shrink:0; }
-  #dropZone { width:820px; max-width:94vw; padding:30px 24px; border:5px dashed var(--lime-d); border-radius:22px;
+  .dropZone { width:820px; max-width:94vw; padding:30px 24px; border:5px dashed var(--lime-d); border-radius:22px;
               text-align:center; cursor:pointer; background:var(--panel); transition:.15s;
               box-shadow:0 4px 16px rgba(18,53,91,.08); }
-  #dropZone:hover, #dropZone.drag { border-color:var(--teal); background:var(--teal-light); }
-  #dropZone .icon { font-size:64px; line-height:1; }
-  #dropZone .big { font-size:30px; font-weight:800; line-height:1.4; margin-top:8px; color:var(--navy); }
-  #dropZone .small { font-size:19px; color:var(--muted); margin-top:10px; }
+  .dropZone.ready { border-color:var(--ok); background:#ecf8ef; }
+  .dropZone:hover, .dropZone.drag { border-color:var(--teal); background:var(--teal-light); }
+  .dropZone .icon { font-size:64px; line-height:1; }
+  .dropZone .big { font-size:30px; font-weight:800; line-height:1.4; margin-top:8px; color:var(--navy); }
+  .dropZone .small { font-size:19px; color:var(--muted); margin-top:10px; }
   #uploadStatus { font-size:22px; min-height:34px; text-align:center; font-weight:600; }
   #uploadStatus.err { color:var(--danger); }
   #uploadProgress { display:none; width:820px; max-width:94vw; }
@@ -270,18 +279,35 @@
 
   <div id="uploadScreen">
     <h1>ตรวจและจำแนกเม็ดเลือดขาวจากภาพสไลด์</h1>
-    <p class="lead">อัปโหลดภาพหรือโฟลเดอร์ภาพสไลด์เลือด ระบบจะตรวจหาและจำแนกเม็ดเลือดขาวให้โดยอัตโนมัติ จากนั้นท่านเพียงตรวจสอบและแก้ไขให้ถูกต้อง</p>
+    <p class="lead">เลือกไฟล์ป้ายกำกับ (.txt / .csv) และภาพสไลด์เลือด เมื่อเลือกครบทั้งสองอย่าง ระบบจะจับคู่ป้ายกำกับกับภาพให้ แล้วท่านเพียงตรวจสอบและแก้ไขให้ถูกต้อง</p>
     <div id="steps">
-      <div class="step"><i>1</i>อัปโหลดภาพ</div>
-      <div class="step"><i>2</i>ระบบตรวจหาอัตโนมัติ</div>
+      <div class="step"><i>1</i>เลือกไฟล์ CSV ป้ายกำกับ</div>
+      <div class="step"><i>2</i>เลือกภาพ</div>
       <div class="step"><i>3</i>ตรวจสอบและบันทึก</div>
     </div>
-    <div id="dropZone" tabindex="0" role="button" aria-label="อัปโหลดภาพหรือโฟลเดอร์">
-      <div class="icon">&#128194;</div>
-      <div class="big">ลากภาพหรือโฟลเดอร์มาวางที่นี่<br>หรือคลิกเพื่อเลือก</div>
-      <div class="small">รองรับ .jpg &nbsp;.jpeg &nbsp;.png &nbsp;.bmp &nbsp;.tif &nbsp;.tiff &middot; ระบบจะรับทั้งไฟล์และโฟลเดอร์ให้โดยอัตโนมัติ</div>
+    <div id="inputs">
+      <div class="dropZone" id="csvZone" tabindex="0" role="button" aria-label="CSV">
+        <div class="icon">&#128196;</div>
+        <div class="big">1. โฟลเดอร์ป้ายกำกับ (.txt)</div>
+        <div class="small" id="csvName">คลิกเพื่อเลือกโฟลเดอร์ไฟล์ .txt หรือลากโฟลเดอร์มาวางที่นี่</div>
+      </div>
+      <div class="dropZone" id="imgZone" tabindex="0" role="button" aria-label="images">
+        <div class="icon">&#128194;</div>
+        <div class="big">2. ภาพ (ไฟล์หรือโฟลเดอร์)</div>
+        <div class="small" id="imgName">คลิกหรือลากภาพ/โฟลเดอร์มาวางที่นี่ &middot; .jpg .png .tif</div>
+      </div>
     </div>
+    <input type="file" id="csvInput" webkitdirectory directory multiple style="display:none">
+    <input type="file" id="imgInput" accept="image/*,.tif,.tiff" multiple style="display:none">
     <input type="file" id="folderInput" webkitdirectory directory multiple style="display:none">
+    <div id="mismatch" hidden>
+      <b id="mmTitle"></b>
+      <div class="mmCols">
+        <div><h4 id="mmLabH"></h4><ul id="mmLab"></ul></div>
+        <div><h4 id="mmImgH"></h4><ul id="mmImg"></ul></div>
+      </div>
+      <button id="mmGo" class="primary" type="button"></button>
+    </div>
     <div id="uploadStatus"></div>
     <div id="uploadProgress">
       <div id="uploadProgressTrack"><div id="uploadProgressFill"></div></div>
@@ -348,8 +374,12 @@ const EN = {
   'ระบบกำลังตรวจหาเซลล์ให้ท่านอยู่เบื้องหลัง':'The system is detecting cells in the background',
   'เข้าใจแล้ว เริ่มใช้งาน':'Got it, start',
   'ตรวจและจำแนกเม็ดเลือดขาวจากภาพสไลด์':'Detect and classify white blood cells from slide images',
-  'อัปโหลดภาพหรือโฟลเดอร์ภาพสไลด์เลือด ระบบจะตรวจหาและจำแนกเม็ดเลือดขาวให้โดยอัตโนมัติ จากนั้นท่านเพียงตรวจสอบและแก้ไขให้ถูกต้อง':
-    'Upload blood slide images or a folder. The system detects and classifies white blood cells automatically; you only review and correct them.',
+  'เลือกไฟล์ป้ายกำกับ (.txt / .csv) และภาพสไลด์เลือด เมื่อเลือกครบทั้งสองอย่าง ระบบจะจับคู่ป้ายกำกับกับภาพให้ แล้วท่านเพียงตรวจสอบและแก้ไขให้ถูกต้อง':
+    'Choose the folder of label .txt files and the blood slide images. Once both are chosen, the labels are matched to the images and you only review and correct them.',
+  'เลือกไฟล์ป้ายกำกับ':'Choose the CSV label file', 'เลือกภาพ':'Choose images',
+  '1. โฟลเดอร์ป้ายกำกับ (.txt)':'1. Folder of label files (.txt)', '2. ภาพ (ไฟล์หรือโฟลเดอร์)':'2. Images (files or a folder)',
+  'คลิกเพื่อเลือกโฟลเดอร์ไฟล์ .txt หรือลากโฟลเดอร์มาวางที่นี่':'Click to choose the folder of .txt files, or drop the folder here',
+  'คลิกหรือลากภาพ/โฟลเดอร์มาวางที่นี่ · .jpg .png .tif':'Click or drop images / a folder here · .jpg .png .tif',
   'อัปโหลดภาพ':'Upload images', 'ระบบตรวจหาอัตโนมัติ':'Automatic detection', 'ตรวจสอบและบันทึก':'Review and save',
   'อัปโหลดภาพหรือโฟลเดอร์':'Upload images or a folder',
   'ลากภาพหรือโฟลเดอร์มาวางที่นี่':'Drag images or a folder here', 'หรือคลิกเพื่อเลือก':'or click to choose',
@@ -494,19 +524,43 @@ function setDetectingProgress(on) {
 // ------------------------------------------------------------- upload flow --
 // One drop area handles everything: dropped files, dropped folders (searched
 // recursively) or a mix of both. Clicking opens the folder picker.
-const dropZone = $('dropZone'), folderInput = $('folderInput');
-dropZone.addEventListener('click', () => folderInput.click());
-dropZone.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); folderInput.click(); } });
-folderInput.addEventListener('change', () => { if (folderInput.files.length) upload(folderInput.files); });
+const csvZone = $('csvZone'), imgZone = $('imgZone'), csvInput = $('csvInput'), folderInput = $('folderInput');
+let csvFile = [], imageFiles = [], uploading = false;
+const IMG_EXT = /\.(jpe?g|png|bmp|tiff?)$/i;
+function bindZone(zone, input) {
+  zone.addEventListener('click', () => input.click());
+  zone.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); input.click(); } });
+}
+bindZone(csvZone, csvInput); bindZone(imgZone, folderInput);
+csvInput.addEventListener('change', () => { if (csvInput.files.length) setFiles(Array.from(csvInput.files)); });
+folderInput.addEventListener('change', () => { if (folderInput.files.length) setFiles(Array.from(folderInput.files)); });
+
+// accepts anything dropped/picked: a .csv goes to the label slot, images to the image slot
+function setFiles(files) {
+  const csv = files.filter(f => /\.(txt|csv)$/i.test(f.name));
+  const imgs = files.filter(f => IMG_EXT.test(f.name));
+  if (csv.length) { csvFile = csv; $('csvName').textContent = '\u2714 ' + L(`${csv.length} ไฟล์ป้ายกำกับ`, `${csv.length} label files`); csvZone.classList.add('ready'); }
+  if (imgs.length) {
+    imageFiles = imgs;
+    $('imgName').textContent = '\u2714 ' + L(`${imgs.length} ภาพ`, `${imgs.length} images`);
+    imgZone.classList.add('ready');
+  }
+  if (!csv.length && !imgs.length) {
+    const st = $('uploadStatus'); st.classList.add('err');
+    st.textContent = L('ไม่พบไฟล์ป้ายกำกับ (.txt/.csv) หรือไฟล์ภาพที่รองรับ', 'No label (.txt/.csv) or supported image file found');
+    return;
+  }
+  $('uploadStatus').classList.remove('err');
+  if (csvFile.length && imageFiles.length) upload();
+  else $('uploadStatus').textContent = csvFile.length
+    ? L('เลือกภาพต่อได้เลย', 'Now choose the images') : L('เลือกไฟล์ป้ายกำกับต่อได้เลย', 'Now choose the label files');
+}
 
 const screen = $('uploadScreen');
-screen.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag'); });
-screen.addEventListener('dragleave', e => { if (e.target === screen) dropZone.classList.remove('drag'); });
+screen.addEventListener('dragover', e => { e.preventDefault(); });
 screen.addEventListener('drop', async e => {
   e.preventDefault();
-  dropZone.classList.remove('drag');
-  const files = await filesFromDataTransfer(e.dataTransfer);
-  if (files.length) upload(files);
+  setFiles(await filesFromDataTransfer(e.dataTransfer));
 });
 // a file dropped outside the upload screen must not make the browser navigate away
 window.addEventListener('dragover', e => e.preventDefault());
@@ -537,7 +591,6 @@ async function filesFromDataTransfer(dt) {
 
 function fmtMB(bytes) { return (bytes / (1024 * 1024)).toFixed(0); }
 
-const IMG_EXT = /\.(jpe?g|png|bmp|tiff?)$/i;
 const BATCH = 100;  // the server rejects requests with >1000 files, so send folders in chunks
 
 function postBatch(files, sid, onProgress) {
@@ -559,20 +612,25 @@ function postBatch(files, sid, onProgress) {
   });
 }
 
-async function upload(fileList) {
-  // folders often contain non-image files (labels, thumbs.db...) - skip them
-  const files = Array.from(fileList).filter(f => IMG_EXT.test(f.name));
+function postCsv(file, sid) {
+  const form = new FormData();
+  form.append('session_id', sid); for (const f of file) form.append('csv', f, f.name);
+  return fetch('/api/upload_csv', { method: 'POST', body: form }).then(async r => {
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(d.error || `server returned ${r.status}`);
+    return d;
+  });
+}
+
+async function upload() {
+  if (uploading) return;
+  uploading = true;
+  const files = imageFiles;
   const status = $('uploadStatus');
   status.classList.remove('err');
-  if (!files.length) {
-    status.classList.add('err');
-    status.textContent = L('ไม่พบไฟล์ภาพที่รองรับ กรุณาเลือกไฟล์หรือโฟลเดอร์ที่มีภาพ', 'No supported image files found. Please choose images or a folder containing images.');
-    return;
-  }
   const totalBytes = files.reduce((s, f) => s + f.size, 0) || 1;
   const totalMB = fmtMB(totalBytes);
   $('uploadProgress').classList.add('active');
-  $('uploadProgress').scrollIntoView({ block: 'nearest' });
   $('uploadProgressFill').style.width = '0%';
 
   try {
@@ -583,30 +641,60 @@ async function upload(fileList) {
       const d = await postBatch(batch, sid, loaded => {
         const sent = doneBytes + loaded, pct = Math.min(100, Math.round(sent / totalBytes * 100));
         $('uploadProgressFill').style.width = pct + '%';
-        status.textContent = L(`กำลังอัปโหลดภาพจำนวน ${files.length} ภาพ  ${fmtMB(sent)} / ${totalMB} MB (${pct}%)`, `Uploading ${files.length} images  ${fmtMB(sent)} / ${totalMB} MB (${pct}%)`);
+        status.textContent = L(`กำลังอัปโหลดภาพ ${files.length} ภาพ  ${fmtMB(sent)} / ${totalMB} MB (${pct}%)`, `Uploading ${files.length} images  ${fmtMB(sent)} / ${totalMB} MB (${pct}%)`);
       });
       sid = d.session_id;
       doneBytes += batchBytes;
     }
     $('uploadProgressFill').style.width = '100%';
-    status.textContent = L('อัปโหลดเสร็จสมบูรณ์ ระบบกำลังเริ่มตรวจหาเซลล์', 'Upload complete. Starting cell detection.');
-    openSession(sid, { guide: true });
+    status.textContent = L('กำลังจับคู่ป้ายกำกับกับภาพ...', 'Matching labels to images...');
+    const r = await postCsv(csvFile, sid);
+    if (!r.matched_images) {
+      throw new Error(L('ไม่มีไฟล์ป้ายกำกับใดตรงกับชื่อภาพเลย ', 'No label file name matches any image. ')
+        + (r.unmatched_names.length ? '(' + r.unmatched_names.slice(0, 3).join(', ') + ' ...)' : ''));
+    }
+    const note = L(`จับคู่แล้ว ${r.matched_images}/${r.images_total} ภาพ, ${r.boxes} กรอบ`, `Matched ${r.matched_images}/${r.images_total} images, ${r.boxes} boxes`)
+      + (r.bad_rows ? L(` · แถวที่อ่านไม่ได้ ${r.bad_rows}`, ` · unreadable rows: ${r.bad_rows}`) : '');
+    status.textContent = note;
+    CLASSES = r.classes;
+    $('clsSelect').innerHTML = CLASSES.map((n, i) => `<option value="${i}">${n}</option>`).join('');
+    const badLab = r.unmatched_names || [], badImg = r.unlabeled_images || [];
+    if (badLab.length || badImg.length) {
+      // tell the user exactly which file names did not match, then let them continue
+      const esc = t => String(t).replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+      const li = a => a.length ? a.map(n => `<li>${esc(n)}</li>`).join('') : `<li>${L('ไม่มี', 'none')}</li>`;
+      $('mmTitle').textContent = L('มีไฟล์ที่ชื่อไม่ตรงกัน', 'Some file names do not match');
+      $('mmLabH').textContent = L(`ไฟล์ป้ายกำกับที่ไม่มีภาพ (${badLab.length})`, `Label files with no image (${badLab.length})`);
+      $('mmImgH').textContent = L(`ภาพที่ไม่มีไฟล์ป้ายกำกับ (${badImg.length})`, `Images with no label file (${badImg.length})`);
+      $('mmLab').innerHTML = li(badLab); $('mmImg').innerHTML = li(badImg);
+      $('mmGo').textContent = L('ดำเนินการต่อด้วยไฟล์ที่ตรงกัน', 'Continue with the matched files');
+      $('mismatch').hidden = false;
+      await new Promise(res => { $('mmGo').onclick = res; });
+      $('mismatch').hidden = true;
+    }
+    await openSession(sid, { guide: false });
+    flash(note);
   } catch (e) {
     status.classList.add('err');
-    status.textContent = L('การอัปโหลดไม่สำเร็จ: ', 'Upload failed: ') + e.message;
+    status.textContent = L('ไม่สำเร็จ: ', 'Failed: ') + e.message;
+    csvFile = []; imageFiles = [];
+    csvZone.classList.remove('ready'); imgZone.classList.remove('ready');
+    $('csvName').textContent = L('คลิกเพื่อเลือกโฟลเดอร์ไฟล์ .txt หรือลากโฟลเดอร์มาวางที่นี่', 'Click to choose the folder of .txt files, or drop the folder here');
+    $('imgName').textContent = L('คลิกหรือลากภาพ/โฟลเดอร์มาวางที่นี่', 'Click or drop images / a folder here');
   } finally {
     $('uploadProgress').classList.remove('active');
+    uploading = false;
   }
 }
 
 // show the workspace and start detection straight away - no button needed
 async function openSession(sid, opts = {}) {
   SESSION_ID = sid;
+  try { const c = await (await fetch('/api/session_classes?session_id=' + encodeURIComponent(sid))).json(); if (c.classes) { CLASSES = c.classes; $('clsSelect').innerHTML = CLASSES.map((n, i) => `<option value="${i}">${n}</option>`).join(''); } } catch (e) {}
   $('uploadScreen').style.display = 'none';
   $('layout').classList.add('active');
   resize();
   await loadImages();
-  detectAll();              // runs in the background; the UI stays usable
   if (opts.guide) showGuideAuto();
 }
 
@@ -615,7 +703,7 @@ async function loadImages() {
   $('imgCount').textContent = `(${images.length})`;
   renderFiles();
   $('statChips').style.display = 'flex';  // counters only exist once images are open
-  ['statsBtn','exportBtn','cropRow','modelSel'].forEach(id => $(id).hidden = false);
+  ['statsBtn','exportBtn','cropRow'].forEach(id => $(id).hidden = false);
   refreshChips();
   if (images.length) await select(0);
 }
@@ -627,7 +715,6 @@ async function boot() {
   DEFAULTS = cfg.defaults;
   MODELS = cfg.models || {};
   MODEL = cfg.default_model || '12';
-  $('modelSel').value = MODEL;
   $('clsSelect').innerHTML = CLASSES.map((n, i) => `<option value="${i}">${n}</option>`).join('');
 
   // a link like /?session_id=xyz jumps straight into a session someone
@@ -647,20 +734,6 @@ function setLang(l) {
 }
 $('langSel').addEventListener('input', e => setLang(e.target.value));
 $('langSel').addEventListener('change', e => setLang(e.target.value));
-$('modelSel').addEventListener('change', e => {
-  const m = e.target.value;
-  if (MODELS[m] && !MODELS[m].available) {
-    flash(L(`ยังไม่พบไฟล์โมเดล ${m} คลาส บนเซิร์ฟเวอร์`, `The ${m}-classes model file was not found on the server`), true);
-    e.target.value = MODEL; return;
-  }
-  MODEL = m;
-  if (MODELS[m] && MODELS[m].classes.length) {
-    CLASSES = MODELS[m].classes;
-    $('clsSelect').innerHTML = CLASSES.map((n, i) => `<option value="${i}">${n}</option>`).join('');
-    draw();
-  }
-  flash(L(`เลือกโมเดล ${m} คลาส (ใช้กับการตรวจหาครั้งถัดไป)`, `Selected ${m}-classes model (used for the next detection)`));
-});
 boot();
 applyStatic();
 
@@ -1117,7 +1190,7 @@ window.addEventListener('keydown', e => {
     selected = (selected + (e.shiftKey ? -1 : 1) + boxes.length) % boxes.length;
     status(); draw();
   }
-  else if (e.key === 'd' || e.key === 'D') { e.preventDefault(); detect(); }
+  
   else if (e.key === 'f' || e.key === 'F') { e.preventDefault(); fit(); }
   else if (e.key === '+' || e.key === '=') { e.preventDefault(); zoomBy(1.25); }
   else if (e.key === '-' || e.key === '_') { e.preventDefault(); zoomBy(0.8); }
